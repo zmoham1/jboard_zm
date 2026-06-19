@@ -1,5 +1,5 @@
 board_id,platform,company,url,fail_count,fail_reason,last_checked
-ashby:contextual,ashby,Contextual AI,https://jobs.ashbyhq.com/contextual,1,HTTP 404,2026-06-18T00:14:44.353597+00:00
+ashby:contextual,ashby,Contextual AI,https://jobs.ashbyhq.com/contextual,1,HTTP 404,2026-06-19T00:25:28.899151+00:00
 ashby:laminar,ashby,Laminar,https://jobs.ashbyhq.com/laminar,0,HTTP 404,2026-05-11T21:38:51.828172+00:00
 ashby:lime,ashby,Lime,https://jobs.ashbyhq.com/lime,0,HTTP 404,2026-05-11T22:00:51.235451+00:00
 ashby:machinify,ashby,Machinify,https://jobs.ashbyhq.com/machinify,0,HTTP 404,2026-05-11T21:38:51.658744+00:00
@@ -28,7 +28,7 @@ greenhouse:cdpjobs,greenhouse,Coinbase Developer Platform,https://boards.greenho
 greenhouse:factorial,greenhouse,Factorial,https://job-boards.greenhouse.io/factorial,0,HTTP 404,2026-05-11T22:04:41.221901+00:00
 greenhouse:genies,greenhouse,genies,https://boards.greenhouse.io/genies,0,HTTP 404,2026-05-11T21:40:05.341426+00:00
 greenhouse:grammarly,greenhouse,Grammarly,https://boards.greenhouse.io/grammarly,0,HTTP 404,2026-05-11T21:38:54.301876+00:00
-greenhouse:insightly,greenhouse,Insightly,https://boards.greenhouse.io/insightly,7,HTTP 404,2026-06-18T00:03:40.123041+00:00
+greenhouse:insightly,greenhouse,Insightly,https://boards.greenhouse.io/insightly,7,HTTP 404,2026-06-19T00:14:24.044451+00:00
 greenhouse:modernizingmedicineinc,greenhouse,modernizingmedicineinc,https://boards.greenhouse.io/modernizingmedicineinc,0,HTTP 404,2026-05-11T21:40:28.642679+00:00
 greenhouse:mutiny,greenhouse,Mutiny,https://boards.greenhouse.io/mutiny,5,HTTP 404,2026-05-26T16:19:00.715565+00:00
 greenhouse:opendoor,greenhouse,Opendoor,https://boards.greenhouse.io/opendoor,1,HTTP 404,2026-05-18T16:09:06.577854+00:00
@@ -40,13 +40,13 @@ greenhouse:snowflake,greenhouse,Snowflake,https://boards.greenhouse.io/snowflake
 greenhouse:styra,greenhouse,Styra,https://boards.greenhouse.io/styra,0,HTTP 404,2026-05-11T21:50:54.771251+00:00
 greenhouse:swishanalytics,greenhouse,Swish Analytics,https://boards.greenhouse.io/swishanalytics,0,HTTP 404,2026-05-11T21:39:21.049660+00:00
 greenhouse:teads,greenhouse,Teads,https://boards.greenhouse.io/teads,0,HTTP 404,2026-05-11T21:50:54.898952+00:00
-greenhouse:temporal,greenhouse,Temporal,https://boards.greenhouse.io/temporal,7,HTTP 404,2026-06-17T23:50:19.148374+00:00
+greenhouse:temporal,greenhouse,Temporal,https://boards.greenhouse.io/temporal,7,HTTP 404,2026-06-19T00:00:44.186467+00:00
 greenhouse:thumbtack,greenhouse,Thumbtack,https://boards.greenhouse.io/thumbtack,0,HTTP 404,2026-05-11T21:39:21.196801+00:00
 greenhouse:trmlabs,greenhouse,TRM Labs,https://boards.greenhouse.io/trmlabs,0,HTTP 404,2026-05-11T21:50:55.156808+00:00
 greenhouse:truecar,greenhouse,TrueCar,https://boards.greenhouse.io/truecar,0,HTTP 404,2026-05-11T21:50:55.194258+00:00
 greenhouse:utilityapi,greenhouse,UtilityAPI,https://boards.greenhouse.io/utilityapi,0,HTTP 404,2026-05-11T21:51:06.370396+00:00
 greenhouse:vesper,greenhouse,Vesper,https://boards.greenhouse.io/vesper,0,HTTP 404,2026-05-11T21:51:06.314570+00:00
-greenhouse:veza,greenhouse,Veza Technologies,https://boards.greenhouse.io/veza,1,HTTP 404,2026-06-17T23:50:19.193778+00:00
+greenhouse:veza,greenhouse,Veza Technologies,https://boards.greenhouse.io/veza,1,HTTP 404,2026-06-19T00:00:44.413341+00:00
 greenhouse:zymergen,greenhouse,Zymergen,https://boards.greenhouse.io/zymergen,6,HTTP 404,2026-06-02T17:08:42.044661+00:00
 lever:clarity-ai,lever,Clarity AI,https://jobs.lever.co/clarity-ai,0,HTTP 404,2026-05-11T22:04:41.317856+00:00
 lever:forto,lever,Forto,https://jobs.lever.co/forto,0,HTTP 404,2026-05-11T22:04:41.573845+00:00
