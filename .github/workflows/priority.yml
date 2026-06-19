@@ -2,7 +2,7 @@ name: Job Radar — Priority Companies
 
 on:
   schedule:
-    - cron: "22,52 * * * *"   # Every 30 minutes, staggered behind main
+    - cron: "37 */2 * * *"    # Every 2 hours, staggered behind main
   workflow_dispatch:
 
 permissions:

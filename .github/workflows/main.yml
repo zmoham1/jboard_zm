@@ -2,7 +2,7 @@ name: Job Radar — Main Sources
 
 on:
   schedule:
-    - cron: "7,37 * * * *"   # Every 30 minutes, offset from :00 congestion
+    - cron: "7 */2 * * *"    # Every 2 hours
   workflow_dispatch:           # Manual trigger
 
 permissions:
