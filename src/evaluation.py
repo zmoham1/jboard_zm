@@ -481,6 +481,20 @@ def _extract_years_requirement(text: str) -> int:
     return max(mins) if mins else 0
 
 
+def _years_requirement_text(title: str, description: str, fallback_text: str) -> str:
+    """Scope years-of-experience extraction to the required/responsibilities JD sections
+    when they're detectable, so unrelated boilerplate (e.g. "25 years of experience serving
+    clients" in an About Us blurb) can't masquerade as the role's own experience requirement.
+    Falls back to the full normalized text when no structured headings are found.
+    """
+    sections = _jd_sections(description or "")
+    if set(sections) == {"full_text"}:
+        return fallback_text
+    scoped_parts = [title, sections.get("required", ""), sections.get("responsibilities", "")]
+    scoped = _norm(*[p for p in scoped_parts if p])
+    return scoped or fallback_text
+
+
 def _dimension_title_fit(title: str) -> tuple[int, str]:
     title_result = classify(title)
     if title_result.label == "yes":
@@ -531,8 +545,8 @@ def _dimension_target_alignment(role_hits: list[str]) -> tuple[int, str]:
     return 30, "The posting does not explicitly mention your preferred role families."
 
 
-def _dimension_seniority(text: str) -> tuple[int, str]:
-    years_required = _extract_years_requirement(text)
+def _dimension_seniority(text: str, years_text: str = "") -> tuple[int, str]:
+    years_required = _extract_years_requirement(years_text or text)
     if years_required > 3:
         return 5, f"The posting requires {years_required}+ years of experience, which is above your target range."
     token = _find_seniority_token(text)
@@ -543,8 +557,8 @@ def _dimension_seniority(text: str) -> tuple[int, str]:
     return 45, f"The posting may be slightly above your target level because it mentions {token}."
 
 
-def _experience_penalty(text: str) -> tuple[int, str]:
-    years_required = _extract_years_requirement(text)
+def _experience_penalty(text: str, years_text: str = "") -> tuple[int, str]:
+    years_required = _extract_years_requirement(years_text or text)
     if years_required <= 3:
         return 0, ""
     return 100, f"Blocked because the role requires {years_required}+ years of experience, above your 0-3 year target range."
@@ -753,7 +767,8 @@ def evaluate_job(
             dimensions=dimensions,
         )
 
-    years_required = _extract_years_requirement(text)
+    years_text = _years_requirement_text(title, description, text)
+    years_required = _extract_years_requirement(years_text)
     if years_required >= 4:
         block_reason = f"Blocked because the role requires {years_required}+ years of experience, above your 0-3 year target range."
         dimensions = [
@@ -783,13 +798,13 @@ def evaluate_job(
         EvaluationDimension("title_fit", 0.25, *_dimension_title_fit(title)),
         EvaluationDimension("skill_overlap", 0.25, *_dimension_skill_overlap(matched_strong, matched_moderate, strong_points, moderate_points, assessment)),
         EvaluationDimension("target_alignment", 0.15, *_dimension_target_alignment(role_hits)),
-        EvaluationDimension("seniority_fit", 0.10, *_dimension_seniority(text)),
+        EvaluationDimension("seniority_fit", 0.10, *_dimension_seniority(text, years_text)),
         EvaluationDimension("location_fit", 0.05, *_dimension_location(location, text)),
         EvaluationDimension("evidence_quality", 0.10, *_dimension_evidence(description, matched_strong, matched_moderate, assessment)),
         EvaluationDimension("risk", 0.10, *_dimension_risk(text)),
     ]
 
-    experience_penalty, experience_reason = _experience_penalty(text)
+    experience_penalty, experience_reason = _experience_penalty(text, years_text)
     score = round(sum(d.weighted_points for d in dimensions) - experience_penalty)
     evidence_cap, evidence_cap_reason = _evidence_score_cap(description, source)
     resume_cap, resume_cap_reason = _resume_gap_score_cap(assessment)
