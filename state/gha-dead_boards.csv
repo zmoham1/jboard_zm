@@ -1,6 +1,6 @@
 board_id,platform,company,url,fail_count,fail_reason,last_checked
 ashby:contextual,ashby,Contextual AI,https://jobs.ashbyhq.com/contextual,1,HTTP 404,2026-06-19T00:25:28.899151+00:00
-ashby:continue,ashby,Continue,https://jobs.ashbyhq.com/continue,1,HTTP 404,2026-07-14T10:32:54.369928+00:00
+ashby:continue,ashby,Continue,https://jobs.ashbyhq.com/continue,1,HTTP 404,2026-07-14T12:08:27.211723+00:00
 ashby:laminar,ashby,Laminar,https://jobs.ashbyhq.com/laminar,0,HTTP 404,2026-05-11T21:38:51.828172+00:00
 ashby:lime,ashby,Lime,https://jobs.ashbyhq.com/lime,0,HTTP 404,2026-05-11T22:00:51.235451+00:00
 ashby:lindy,ashby,Lindy,https://jobs.ashbyhq.com/lindy,6,HTTP 404,2026-07-09T04:36:34.006757+00:00
@@ -58,7 +58,7 @@ greenhouse:veza,greenhouse,Veza Technologies,https://boards.greenhouse.io/veza,1
 greenhouse:zymergen,greenhouse,Zymergen,https://boards.greenhouse.io/zymergen,6,HTTP 404,2026-06-02T17:08:42.044661+00:00
 lever:clarity-ai,lever,Clarity AI,https://jobs.lever.co/clarity-ai,0,HTTP 404,2026-05-11T22:04:41.317856+00:00
 lever:forto,lever,Forto,https://jobs.lever.co/forto,0,HTTP 404,2026-05-11T22:04:41.573845+00:00
-lever:sprucesystems,lever,Spruce,https://jobs.lever.co/sprucesystems,1,HTTP 404,2026-07-14T10:11:54.250593+00:00
+lever:sprucesystems,lever,Spruce,https://jobs.lever.co/sprucesystems,1,HTTP 404,2026-07-14T11:47:04.465383+00:00
 lever:vinted,lever,Vinted,https://jobs.lever.co/vinted,0,HTTP 404,2026-05-11T22:04:41.633970+00:00
 lever:wandb,lever,Weights & Biases,https://jobs.lever.co/wandb,0,HTTP 404,2026-05-11T22:04:41.263905+00:00
 lever:workos,lever,WorkOS,https://jobs.lever.co/workos,6,HTTP 404,2026-06-02T17:08:42.200407+00:00
