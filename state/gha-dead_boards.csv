@@ -1,6 +1,6 @@
 board_id,platform,company,url,fail_count,fail_reason,last_checked
 ashby:contextual,ashby,Contextual AI,https://jobs.ashbyhq.com/contextual,1,HTTP 404,2026-06-19T00:25:28.899151+00:00
-ashby:continue,ashby,Continue,https://jobs.ashbyhq.com/continue,1,HTTP 404,2026-07-15T10:39:32.843922+00:00
+ashby:continue,ashby,Continue,https://jobs.ashbyhq.com/continue,1,HTTP 404,2026-07-15T14:33:39.343284+00:00
 ashby:laminar,ashby,Laminar,https://jobs.ashbyhq.com/laminar,0,HTTP 404,2026-05-11T21:38:51.828172+00:00
 ashby:lime,ashby,Lime,https://jobs.ashbyhq.com/lime,0,HTTP 404,2026-05-11T22:00:51.235451+00:00
 ashby:lindy,ashby,Lindy,https://jobs.ashbyhq.com/lindy,6,HTTP 404,2026-07-09T04:36:34.006757+00:00
@@ -27,6 +27,7 @@ greenhouse:athelas,greenhouse,Athelas,https://boards.greenhouse.io/athelas,0,HTT
 greenhouse:atlassian,greenhouse,Atlassian,https://boards.greenhouse.io/atlassian,0,HTTP 404,2026-05-11T21:46:52.833711+00:00
 greenhouse:aumni,greenhouse,Aumni,https://boards.greenhouse.io/aumni,0,HTTP 404,2026-05-11T21:46:52.863641+00:00
 greenhouse:avalabs,greenhouse,Ava Labs,https://boards.greenhouse.io/avalabs,0,HTTP 404,2026-05-11T21:50:21.207018+00:00
+greenhouse:capitalrx,greenhouse,Capitalrx,https://boards.greenhouse.io/capitalrx,1,HTTP 404,2026-07-15T14:33:42.209687+00:00
 greenhouse:carecom,greenhouse,Care.com,https://boards.greenhouse.io/carecom,1,HTTP 404,2026-06-04T17:35:33.474322+00:00
 greenhouse:cdpjobs,greenhouse,Coinbase Developer Platform,https://boards.greenhouse.io/cdpjobs,0,HTTP 404,2026-05-11T21:38:53.140886+00:00
 greenhouse:factorial,greenhouse,Factorial,https://job-boards.greenhouse.io/factorial,0,HTTP 404,2026-05-11T22:04:41.221901+00:00
@@ -58,7 +59,7 @@ greenhouse:veza,greenhouse,Veza Technologies,https://boards.greenhouse.io/veza,1
 greenhouse:zymergen,greenhouse,Zymergen,https://boards.greenhouse.io/zymergen,6,HTTP 404,2026-06-02T17:08:42.044661+00:00
 lever:clarity-ai,lever,Clarity AI,https://jobs.lever.co/clarity-ai,0,HTTP 404,2026-05-11T22:04:41.317856+00:00
 lever:forto,lever,Forto,https://jobs.lever.co/forto,0,HTTP 404,2026-05-11T22:04:41.573845+00:00
-lever:sprucesystems,lever,Spruce,https://jobs.lever.co/sprucesystems,1,HTTP 404,2026-07-15T10:18:18.256618+00:00
+lever:sprucesystems,lever,Spruce,https://jobs.lever.co/sprucesystems,1,HTTP 404,2026-07-15T14:10:44.691242+00:00
 lever:vinted,lever,Vinted,https://jobs.lever.co/vinted,0,HTTP 404,2026-05-11T22:04:41.633970+00:00
 lever:wandb,lever,Weights & Biases,https://jobs.lever.co/wandb,0,HTTP 404,2026-05-11T22:04:41.263905+00:00
 lever:workos,lever,WorkOS,https://jobs.lever.co/workos,6,HTTP 404,2026-06-02T17:08:42.200407+00:00
