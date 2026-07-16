@@ -19,7 +19,7 @@ _AGENCY_PATTERNS = (
     r"talent\s+(?:acquisition|agency|partners?|solutions|staffing|sourcing)",
 )
 _VENDOR_PATTERNS = (
-    r"consult(?:ing|ants?)",
+    r"consult(?:ing|ants?|ancy)",
     r"stott\s+and\s+may",
     r"bcforward",
     r"insight\s+global",
@@ -29,6 +29,11 @@ _VENDOR_PATTERNS = (
     r"nasscomm",
     r"capgemini",
     r"tech\s+consulting",
+    r"jobright(?:\.ai)?",
+    r"haystack",
+    r"beaconfire",
+    r"remotehunter",
+    r"knowfinity",
 )
 
 _DIRECT_SOURCE_SCORES = {
@@ -36,7 +41,7 @@ _DIRECT_SOURCE_SCORES = {
     "apple": 96,
     "google": 96,
     "ibm": 95,
-    "linkedin": 88,
+    "linkedin": 60,
     "meta": 96,
     "microsoft": 96,
     "netflix": 96,
