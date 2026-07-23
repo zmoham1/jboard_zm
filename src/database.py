@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     pipeline_notes TEXT NOT NULL DEFAULT '',
     follow_up_date TEXT NOT NULL DEFAULT '',
     pipeline_updated_at TEXT NOT NULL DEFAULT '',
+    alerted_at   TEXT NOT NULL DEFAULT '',
     first_seen   TEXT NOT NULL,
     last_seen    TEXT NOT NULL
 );
@@ -316,10 +317,18 @@ class Database:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN follow_up_date TEXT NOT NULL DEFAULT ''")
         if "pipeline_updated_at" not in job_columns:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN pipeline_updated_at TEXT NOT NULL DEFAULT ''")
+        if "alerted_at" not in job_columns:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN alerted_at TEXT NOT NULL DEFAULT ''")
+            # Backfill: treat every job that already exists at migration time as
+            # already-alerted, so the first digest run does not email the entire
+            # historical backlog. Only jobs stored *after* this migration stay
+            # pending (alerted_at='').
+            self._conn.execute("UPDATE jobs SET alerted_at=last_seen WHERE alerted_at=''")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_grade ON jobs(grade)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_pipeline_status ON jobs(pipeline_status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_canonical_key ON jobs(canonical_key)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_is_repost ON jobs(is_repost)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_alerted_at ON jobs(alerted_at)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_source_runs_mode ON source_runs(mode)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_source_runs_status ON source_runs(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_source_runs_entity_type ON source_runs(entity_type)")
@@ -333,6 +342,42 @@ class Database:
         with self._lock:
             row = self._conn.execute("SELECT 1 FROM jobs WHERE key=?", (key,)).fetchone()
         return row is None
+
+    def get_pending_alert_jobs(self, labels: tuple[str, ...] = ("yes", "maybe")) -> list[dict]:
+        """Return stored jobs that have not yet been included in a digest email.
+
+        A job is "pending" when it has been stored (mark_job_seen) but never
+        stamped with an alerted_at timestamp. Reposts are excluded to mirror the
+        per-run notification behaviour. Highest scores first.
+        """
+        safe_labels = tuple(l for l in labels if l) or ("yes", "maybe")
+        placeholders = ",".join("?" for _ in safe_labels)
+        rows = self._conn.execute(
+            f"""
+            SELECT key, source, company, title, location, url, posted, score, label,
+                   description, first_seen, last_seen
+            FROM jobs
+            WHERE alerted_at = ''
+              AND is_repost = 0
+              AND label IN ({placeholders})
+            ORDER BY score DESC, employer_quality_score DESC, last_seen DESC
+            """,
+            safe_labels,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_jobs_alerted(self, keys: list[str], when: Optional[str] = None) -> None:
+        """Stamp the given job keys as alerted so they are not re-sent in a digest."""
+        keys = [k for k in keys if k]
+        if not keys:
+            return
+        stamp = when or _now()
+        with self._tx() as conn:
+            for k in keys:
+                conn.execute(
+                    "UPDATE jobs SET alerted_at=? WHERE key=? AND alerted_at=''",
+                    (stamp, k),
+                )
 
     def mark_job_seen(
         self,

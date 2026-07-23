@@ -1349,6 +1349,83 @@ def _maybe_send_failure_alerts(
 # CLI
 # ---------------------------------------------------------------------------
 
+def run_digest(
+    cfg: Config,
+    db: Database,
+    notifier: CompositeNotifier,
+    *,
+    dry_run: bool,
+    no_notify: bool,
+    notify_yes_only: bool = False,
+) -> None:
+    """Send a single consolidated email of all pending (not-yet-alerted) matches.
+
+    Scans store new matches with alerted_at='' (pending). This digest collects
+    every pending YES/MAYBE job, sends one email, and stamps them alerted so
+    they are never re-sent — decoupling alert cadence from scan cadence.
+    """
+    notifications_enabled = db.get_feature_flags(
+        {"notifications": cfg.features.notifications}
+    )["notifications"]
+
+    rows = db.get_pending_alert_jobs()
+    if not rows:
+        log.info("Digest: no pending matches to send.")
+        return
+
+    def _job_from_row(r: dict) -> Job:
+        return Job(
+            key=r["key"],
+            source=r.get("source", ""),
+            company=r.get("company", ""),
+            title=r.get("title", ""),
+            location=r.get("location", ""),
+            url=r.get("url", ""),
+            posted=r.get("posted", ""),
+            description=r.get("description", ""),
+            score=int(r.get("score") or 0),
+            label=r.get("label", "no"),
+        )
+
+    jobs = [_job_from_row(r) for r in rows]
+    yes_jobs = sorted([j for j in jobs if j.label == "yes"], key=lambda j: j.score, reverse=True)
+    maybe_jobs = sorted([j for j in jobs if j.label == "maybe"], key=lambda j: j.score, reverse=True)
+
+    notify_yes = yes_jobs
+    notify_maybe = maybe_jobs if (notify_yes or not notify_yes_only) else []
+    if notify_yes_only and maybe_jobs and not yes_jobs:
+        log.info("Digest: only MAYBE matches pending; holding until a YES arrives.")
+        return
+
+    if not (notify_yes or notify_maybe):
+        log.info("Digest: nothing to send after filtering.")
+        return
+
+    log.info("Digest: %d yes + %d maybe pending.", len(notify_yes), len(notify_maybe))
+
+    if dry_run or no_notify or not notifications_enabled:
+        log.info(
+            "[digest dry-run/no-notify] Would email %d yes + %d maybe (state unchanged).",
+            len(notify_yes),
+            len(notify_maybe),
+        )
+        return
+
+    errs = notifier.notify(
+        notify_yes, notify_maybe, subject_prefix="[Job Radar Digest]", mode="digest"
+    )
+    for e in errs:
+        log.error("Digest notifier error: %s", e)
+
+    if errs:
+        log.warning("Digest: delivery reported errors; leaving jobs pending for retry.")
+        return
+
+    alerted_keys = [j.key for j in notify_yes + notify_maybe]
+    db.mark_jobs_alerted(alerted_keys)
+    log.info("Digest: sent and marked %d job(s) as alerted.", len(alerted_keys))
+
+
 def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> None:
     """Send a weekly health-check summary email."""
     from datetime import datetime, timezone
@@ -1442,7 +1519,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Job Radar — aggregate and alert on new engineering jobs.",
     )
     p.add_argument("--config", default="config.yaml", help="Path to YAML config file (default: config.yaml)")
-    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "web"], help="Run mode (default: main)")
+    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "web"], help="Run mode (default: main)")
     p.add_argument("--dry-run", action="store_true", help="Fetch jobs but do not save state or send notifications.")
     p.add_argument("--no-notify", action="store_true", help="Save state but skip all notifications.")
     p.add_argument("--notify-yes-only", action="store_true", help="Send notifications only when there is at least one YES match; include MAYBE matches only alongside YES alerts.")
@@ -1522,6 +1599,15 @@ def main(argv: Optional[list[str]] = None) -> None:
                 run_until_wrap=args.boards_run_until_wrap,
                 max_iterations=args.boards_max_iterations,
                 export_dead_csv=args.export_dead_csv,
+            )
+        elif args.mode == "digest":
+            run_digest(
+                cfg=cfg,
+                db=db,
+                notifier=notifier,
+                dry_run=args.dry_run,
+                no_notify=args.no_notify,
+                notify_yes_only=args.notify_yes_only,
             )
         elif args.mode == "priority":
             try:

@@ -13,9 +13,18 @@ python -m pip install -r requirements.txt
 python -m src.main --mode web
 python -m src.main
 python -m src.main --mode boards
+python -m src.main --mode digest
 python -m src.main --test-notify
 python -m src.main --health-check
 ```
+
+## Alert cadence (digest model)
+
+Scans run every 2 hours and **store** matches without emailing (`--no-notify`).
+Emails are batched: the `digest` mode collects every stored-but-not-yet-alerted
+YES/MAYBE job, sends one consolidated email, and stamps them so they are never
+re-sent. The `digest.yml` workflow runs this 3x/day (every 8 hours), once per
+scanner database, so a match found at any time goes out in the next digest.
 
 ## Operating model
 

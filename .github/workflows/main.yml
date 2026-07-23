@@ -38,7 +38,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DB_PATH: state/gha-jobs.db
-        run: python -m src.main --mode main
+        run: python -m src.main --mode main --no-notify
 
       - name: Commit state
         run: |

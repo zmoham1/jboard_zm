@@ -1,0 +1,123 @@
+name: Job Radar — Email Digest
+
+on:
+  schedule:
+    - cron: "0 */8 * * *"   # 3x/day (00:00, 08:00, 16:00 UTC) — batches alerts
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Digest for main + priority finds (both live in state/gha-jobs.db).
+  digest-jobs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: job-radar-state
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send jobs digest
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DB_PATH: state/gha-jobs.db
+        run: python -m src.main --mode digest --notify-yes-only
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f state/gha-jobs.db ]; then git add -f state/gha-jobs.db; fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update digest state (jobs) [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1
+
+  # Digest for board sweep finds (state/gha-boards.db).
+  digest-boards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: job-radar-boards-state
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send boards digest
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DB_PATH: state/gha-boards.db
+        run: python -m src.main --mode digest --notify-yes-only
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          MAX_BYTES=$((95 * 1024 * 1024))
+          if [ -f state/gha-boards.db ]; then
+            DB_BYTES=$(wc -c < state/gha-boards.db)
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f state/gha-boards.db
+            else
+              echo "::warning file=state/gha-boards.db::Skipping boards DB commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree state/gha-boards.db
+            fi
+          fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update digest state (boards) [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1
