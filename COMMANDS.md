@@ -30,6 +30,19 @@ both databases (`state/gha-jobs.db` primary, `state/gha-boards.db` via
 `--digest-db`), so the hard cap is **one email per run — max 3 emails per day**.
 A role found by both scanners is emailed once and stamped in both databases.
 
+Send times are anchored to US Eastern via `cron: "0 3,11,19 * * *"` (cron is
+always UTC):
+
+| UTC | EDT (Mar–Nov) | EST (Nov–Mar) |
+|-----|---------------|---------------|
+| 03:00 | 11:00 PM (prev day) | 10:00 PM (prev day) |
+| 11:00 | 7:00 AM | 6:00 AM |
+| 19:00 | 3:00 PM | 2:00 PM |
+
+GitHub cron does not follow daylight saving, so the wall-clock times shift by
+an hour twice a year. The 8-hour spacing is unaffected. To keep the EDT times
+year-round, change the hours to `4,12,20` when EST begins.
+
 ## Operating model
 
 - `public-export` is the public GitHub Actions repo and the remote automation source of truth.
