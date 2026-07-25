@@ -6,10 +6,21 @@ from src.main import _dispatch_results
 from src.sources.base import Job
 
 
+class _FakeDimension:
+    def __init__(self, name: str, score: int) -> None:
+        self.name = name
+        self.score = score
+
+
 class _FakeEvaluation:
     def __init__(self, *, score: int, label: str) -> None:
         self.score = score
         self.label = label
+        # _dispatch_results derives a resume-match score from these dimensions.
+        self.dimensions = [
+            _FakeDimension("evidence_quality", score),
+            _FakeDimension("skill_overlap", score),
+        ]
 
 
 class _FakeDatabase:
@@ -28,6 +39,9 @@ class _FakeDatabase:
             "employer_quality_score": 50,
             "employer_quality_reason": "",
         }
+
+    def get_feedback_jobs(self) -> list[dict]:
+        return []
 
     def is_new_job(self, key: str) -> bool:
         return key in self.new_keys
@@ -83,7 +97,7 @@ class NotificationPolicyTests(unittest.TestCase):
         job = _job("maybe-1", "Maybe Role", "maybe")
         db.new_keys.add(job.key)
 
-        with patch("src.main.evaluate_job", return_value=_FakeEvaluation(score=72, label="maybe")):
+        with patch("src.main.evaluate_job", return_value=_FakeEvaluation(score=60, label="maybe")):
             _dispatch_results(
                 all_jobs=[job],
                 errors=[],
@@ -109,7 +123,7 @@ class NotificationPolicyTests(unittest.TestCase):
         def fake_evaluate_job(title: str, description: str, **_: object) -> _FakeEvaluation:
             if title == "Yes Role":
                 return _FakeEvaluation(score=91, label="yes")
-            return _FakeEvaluation(score=72, label="maybe")
+            return _FakeEvaluation(score=60, label="maybe")
 
         with patch("src.main.evaluate_job", side_effect=fake_evaluate_job):
             _dispatch_results(
