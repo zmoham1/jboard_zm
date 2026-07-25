@@ -52,7 +52,7 @@ jobs:
         run: |
           BATCH=${{ github.event.inputs.batch_size || '50' }}
           WRAP=${{ github.event.inputs.run_until_wrap || 'false' }}
-          CMD="python -m src.main --mode boards --boards-batch-size $BATCH --notify-yes-only"
+          CMD="python -m src.main --mode boards --boards-batch-size $BATCH --notify-yes-only --no-notify"
           if [ "${{ github.event_name }}" = "schedule" ] || [ "$WRAP" = "true" ]; then
             CMD="$CMD --boards-run-until-wrap"
           fi

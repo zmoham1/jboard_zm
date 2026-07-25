@@ -1349,6 +1349,138 @@ def _maybe_send_failure_alerts(
 # CLI
 # ---------------------------------------------------------------------------
 
+def _job_from_row(r: dict) -> Job:
+    return Job(
+        key=r["key"],
+        source=r.get("source", ""),
+        company=r.get("company", ""),
+        title=r.get("title", ""),
+        location=r.get("location", ""),
+        url=r.get("url", ""),
+        posted=r.get("posted", ""),
+        description=r.get("description", ""),
+        score=int(r.get("score") or 0),
+        label=r.get("label", "no"),
+    )
+
+
+def run_digest(
+    cfg: Config,
+    db: Database,
+    notifier: CompositeNotifier,
+    *,
+    dry_run: bool,
+    no_notify: bool,
+    notify_yes_only: bool = False,
+    extra_db_paths: Optional[list[str]] = None,
+) -> None:
+    """Send ONE consolidated email covering all pending (not-yet-alerted) matches.
+
+    Scans store new matches with alerted_at='' (pending). This digest collects
+    every pending YES/MAYBE job across every scanner database, sends a single
+    email, and stamps them alerted so they are never re-sent — decoupling alert
+    cadence from scan cadence and capping volume at one email per run.
+    """
+    notifications_enabled = db.get_feature_flags(
+        {"notifications": cfg.features.notifications}
+    )["notifications"]
+
+    # Open every scanner database so one email can cover them all. The primary
+    # db is already open; extras are opened here and closed before returning.
+    sources: list[tuple[Database, bool]] = [(db, False)]  # (database, owned_by_us)
+    for raw_path in extra_db_paths or []:
+        path = (raw_path or "").strip()
+        if not path or os.path.abspath(path) == os.path.abspath(db.path):
+            continue
+        if not Path(path).exists():
+            log.warning("Digest: skipping missing database %s", path)
+            continue
+        try:
+            sources.append((Database(path), True))
+        except Exception as exc:
+            log.error("Digest: could not open database %s — %s", path, exc)
+
+    try:
+        # Collect pending jobs from every database, remembering which db each
+        # job came from so it can be stamped in the right place afterwards.
+        jobs: list[Job] = []
+        origin: dict[str, list[Database]] = {}
+        for source_db, _owned in sources:
+            try:
+                rows = source_db.get_pending_alert_jobs()
+            except Exception as exc:
+                log.error("Digest: failed reading %s — %s", source_db.path, exc)
+                continue
+            log.info("Digest: %d pending match(es) in %s", len(rows), source_db.path)
+            for r in rows:
+                job = _job_from_row(r)
+                if job.key in origin:
+                    # Same role seen by two scanners: email it once, but remember
+                    # every database so all copies get stamped and none linger
+                    # pending to trigger a duplicate email next run.
+                    origin[job.key].append(source_db)
+                    continue
+                origin[job.key] = [source_db]
+                jobs.append(job)
+
+        if not jobs:
+            log.info("Digest: no pending matches to send.")
+            return
+
+        yes_jobs = sorted([j for j in jobs if j.label == "yes"], key=lambda j: j.score, reverse=True)
+        maybe_jobs = sorted([j for j in jobs if j.label == "maybe"], key=lambda j: j.score, reverse=True)
+
+        if notify_yes_only and maybe_jobs and not yes_jobs:
+            log.info("Digest: only MAYBE matches pending; holding until a YES arrives.")
+            return
+
+        notify_yes = yes_jobs
+        notify_maybe = maybe_jobs if (notify_yes or not notify_yes_only) else []
+
+        if not (notify_yes or notify_maybe):
+            log.info("Digest: nothing to send after filtering.")
+            return
+
+        log.info("Digest: %d yes + %d maybe pending.", len(notify_yes), len(notify_maybe))
+
+        if dry_run or no_notify or not notifications_enabled:
+            log.info(
+                "[digest dry-run/no-notify] Would email %d yes + %d maybe (state unchanged).",
+                len(notify_yes),
+                len(notify_maybe),
+            )
+            return
+
+        errs = notifier.notify(
+            notify_yes, notify_maybe, subject_prefix="[Job Radar Digest]", mode="digest"
+        )
+        for e in errs:
+            log.error("Digest notifier error: %s", e)
+
+        if errs:
+            log.warning("Digest: delivery reported errors; leaving jobs pending for retry.")
+            return
+
+        # Stamp each job in the database it came from.
+        by_db: dict[int, tuple[Database, list[str]]] = {}
+        for job in notify_yes + notify_maybe:
+            for source_db in origin[job.key]:
+                by_db.setdefault(id(source_db), (source_db, []))[1].append(job.key)
+        total = 0
+        for source_db, keys in by_db.values():
+            source_db.mark_jobs_alerted(keys)
+            total += len(keys)
+            log.info("Digest: marked %d job(s) alerted in %s", len(keys), source_db.path)
+        log.info("Digest: sent 1 email covering %d job(s).", total)
+    finally:
+        for source_db, owned in sources:
+            if owned:
+                try:
+                    source_db.close()
+                except Exception:
+                    pass
+
+
 def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> None:
     """Send a weekly health-check summary email."""
     from datetime import datetime, timezone
@@ -1442,12 +1574,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="Job Radar — aggregate and alert on new engineering jobs.",
     )
     p.add_argument("--config", default="config.yaml", help="Path to YAML config file (default: config.yaml)")
-    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "web"], help="Run mode (default: main)")
+    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "web"], help="Run mode (default: main)")
     p.add_argument("--dry-run", action="store_true", help="Fetch jobs but do not save state or send notifications.")
     p.add_argument("--no-notify", action="store_true", help="Save state but skip all notifications.")
     p.add_argument("--notify-yes-only", action="store_true", help="Send notifications only when there is at least one YES match; include MAYBE matches only alongside YES alerts.")
     p.add_argument("--test-notify", action="store_true", help="Send a sample notification without updating state.")
     p.add_argument("--health-check", action="store_true", help="Send a weekly health-check summary email and exit.")
+    p.add_argument("--digest-db", action="append", default=[], metavar="PATH", help="Additional scanner database to include in the digest email (repeatable). Used with --mode digest so one email can cover every scanner.")
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
     p.add_argument("--web-host", default="127.0.0.1", help="Web UI host (used with --mode web).")
     p.add_argument("--web-port", type=int, default=8080, help="Web UI port (used with --mode web).")
@@ -1522,6 +1655,16 @@ def main(argv: Optional[list[str]] = None) -> None:
                 run_until_wrap=args.boards_run_until_wrap,
                 max_iterations=args.boards_max_iterations,
                 export_dead_csv=args.export_dead_csv,
+            )
+        elif args.mode == "digest":
+            run_digest(
+                cfg=cfg,
+                db=db,
+                notifier=notifier,
+                dry_run=args.dry_run,
+                no_notify=args.no_notify,
+                notify_yes_only=args.notify_yes_only,
+                extra_db_paths=args.digest_db,
             )
         elif args.mode == "priority":
             try:

@@ -1,21 +1,22 @@
-name: Job Radar — Main Sources
+name: Job Radar — Email Digest
 
 on:
   schedule:
-    - cron: "0 12 * * *"     # Every morning at 8:00 AM ET / 12:00 UTC
-  workflow_dispatch:           # Manual trigger
+    - cron: "0 */8 * * *"   # 3x/day, 8h apart — exactly one email per run
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+# Serialized against both scanners so the SQLite state commits never collide.
 concurrency:
-  group: job-radar-state
+  group: job-radar-digest
   cancel-in-progress: false
 
 jobs:
-  watch:
+  digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +31,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Job Radar (main mode)
+      # One email covering every scanner: the priority/main DB is primary and
+      # the boards DB is folded in via --digest-db.
+      - name: Send consolidated digest
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
@@ -38,17 +41,30 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DB_PATH: state/gha-jobs.db
-        run: python -m src.main --mode main --no-notify
+        run: |
+          python -m src.main --mode digest \
+            --digest-db state/gha-boards.db \
+            --notify-yes-only
 
       - name: Commit state
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/gha-jobs.db
+          MAX_BYTES=$((95 * 1024 * 1024))
+          if [ -f state/gha-jobs.db ]; then git add -f state/gha-jobs.db; fi
+          if [ -f state/gha-boards.db ]; then
+            DB_BYTES=$(wc -c < state/gha-boards.db)
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f state/gha-boards.db
+            else
+              echo "::warning file=state/gha-boards.db::Skipping boards DB commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree state/gha-boards.db
+            fi
+          fi
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "chore: update state [skip ci]"
+          git commit -m "chore: update digest state [skip ci]"
           for attempt in 1 2 3; do
             git pull --rebase origin ${{ github.ref_name }}
             if git push origin HEAD:${{ github.ref_name }}; then
