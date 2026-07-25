@@ -831,6 +831,16 @@ def evaluate_job(
         reasons.insert(0, onsite_cap_reason)
     if remote_review_reason and remote_review_reason not in reasons:
         reasons.insert(0, remote_review_reason)
+    # Surface a detected clearance/citizenship requirement explicitly. It lives
+    # in a low-weight dimension that scores *low* when flagged, so ranking
+    # dimensions by weighted points drops it out of the top reasons — yet it is
+    # exactly the kind of blocker worth showing in an alert.
+    risk_flag_reason = next(
+        (d.reason for d in dimensions if d.name == "risk" and d.reason.startswith("Clearance or citizenship requirement detected")),
+        "",
+    )
+    if risk_flag_reason and risk_flag_reason not in reasons:
+        reasons.insert(0, risk_flag_reason)
     reasons = reasons[:4]
     fit_summary = f"Grade {grade} ({score}/100). " + " ".join(reasons[:3])
 
