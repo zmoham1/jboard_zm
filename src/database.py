@@ -347,20 +347,42 @@ class Database:
         """Return stored jobs that have not yet been included in a digest email.
 
         A job is "pending" when it has been stored (mark_job_seen) but never
-        stamped with an alerted_at timestamp. Reposts are excluded to mirror the
-        per-run notification behaviour. Highest scores first.
+        stamped with an alerted_at timestamp.
+
+        Reposts are suppressed only when some copy of the same role has actually
+        been emailed already. Suppressing on the is_repost flag alone silently
+        loses roles in two cases seen in production:
+
+          * circular pairs — two listings for one role each flag the *other* as
+            the repost, so neither is ever the "original" and both vanish;
+          * orphaned refs — the original aged out via expire_old_jobs, leaving
+            the repost pointing at a row that no longer exists.
+
+        Matching is by canonical_key (company + title) so any surviving copy
+        counts as "already sent", falling back to the explicit repost_of_key
+        when a row has no canonical key. Highest scores first.
         """
         safe_labels = tuple(l for l in labels if l) or ("yes", "maybe")
         placeholders = ",".join("?" for _ in safe_labels)
         rows = self._conn.execute(
             f"""
-            SELECT key, source, company, title, location, url, posted, score, label,
-                   description, first_seen, last_seen
-            FROM jobs
-            WHERE alerted_at = ''
-              AND is_repost = 0
-              AND label IN ({placeholders})
-            ORDER BY score DESC, employer_quality_score DESC, last_seen DESC
+            SELECT j.key, j.source, j.company, j.title, j.location, j.url, j.posted,
+                   j.score, j.label, j.description, j.canonical_key, j.first_seen, j.last_seen
+            FROM jobs j
+            WHERE j.alerted_at = ''
+              AND j.label IN ({placeholders})
+              AND (
+                j.is_repost = 0
+                OR NOT EXISTS (
+                  SELECT 1 FROM jobs o
+                  WHERE o.alerted_at <> ''
+                    AND CASE
+                          WHEN j.canonical_key <> '' THEN o.canonical_key = j.canonical_key
+                          ELSE o.key = j.repost_of_key
+                        END
+                )
+              )
+            ORDER BY j.score DESC, j.employer_quality_score DESC, j.last_seen DESC
             """,
             safe_labels,
         ).fetchall()
