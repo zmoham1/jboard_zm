@@ -1403,8 +1403,12 @@ def run_digest(
     try:
         # Collect pending jobs from every database, remembering which db each
         # job came from so it can be stamped in the right place afterwards.
-        jobs: list[Job] = []
-        origin: dict[str, list[Database]] = {}
+        # Gather every pending row, tagged with the role it represents. Several
+        # rows can describe one role (the same posting relisted under a new ID,
+        # or the same role seen by two scanners), so group by role and email a
+        # single representative — while remembering every copy so they all get
+        # stamped and none linger pending to re-send next run.
+        groups: dict[str, list[tuple[Job, Database]]] = {}
         for source_db, _owned in sources:
             try:
                 rows = source_db.get_pending_alert_jobs()
@@ -1414,14 +1418,20 @@ def run_digest(
             log.info("Digest: %d pending match(es) in %s", len(rows), source_db.path)
             for r in rows:
                 job = _job_from_row(r)
-                if job.key in origin:
-                    # Same role seen by two scanners: email it once, but remember
-                    # every database so all copies get stamped and none linger
-                    # pending to trigger a duplicate email next run.
-                    origin[job.key].append(source_db)
-                    continue
-                origin[job.key] = [source_db]
-                jobs.append(job)
+                role = (r.get("canonical_key") or "").strip().lower()
+                if not role:
+                    role = f"{job.company.strip().lower()}|{job.title.strip().lower()}"
+                groups.setdefault(role, []).append((job, source_db))
+
+        jobs: list[Job] = []
+        members_for: dict[int, list[tuple[Job, Database]]] = {}
+        for members in groups.values():
+            representative = max(members, key=lambda m: m[0].score)[0]
+            jobs.append(representative)
+            members_for[id(representative)] = members
+        collapsed = sum(len(m) for m in groups.values()) - len(jobs)
+        if collapsed:
+            log.info("Digest: collapsed %d duplicate listing(s) into their role.", collapsed)
 
         if not jobs:
             log.info("Digest: no pending matches to send.")
@@ -1461,11 +1471,11 @@ def run_digest(
             log.warning("Digest: delivery reported errors; leaving jobs pending for retry.")
             return
 
-        # Stamp each job in the database it came from.
+        # Stamp every copy of each emailed role, in the database it came from.
         by_db: dict[int, tuple[Database, list[str]]] = {}
         for job in notify_yes + notify_maybe:
-            for source_db in origin[job.key]:
-                by_db.setdefault(id(source_db), (source_db, []))[1].append(job.key)
+            for member_job, source_db in members_for[id(job)]:
+                by_db.setdefault(id(source_db), (source_db, []))[1].append(member_job.key)
         total = 0
         for source_db, keys in by_db.values():
             source_db.mark_jobs_alerted(keys)
