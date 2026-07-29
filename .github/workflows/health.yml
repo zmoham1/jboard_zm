@@ -29,4 +29,8 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
           ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
-        run: python -m src.main --mode main --health-check
+        # --digest-db folds the boards database into the delivery figures so
+        # the report covers every scanner, not just main/priority.
+        run: |
+          python -m src.main --mode main --health-check \
+            --digest-db state/gha-boards.db

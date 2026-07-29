@@ -90,3 +90,46 @@ class MissedAuditTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeliveryStatsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.path = os.path.join(tempfile.mkdtemp(), "delivery.db")
+        self.db = Database(self.path)
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def _seen(self, key: str, label: str = "yes", score: int = 80) -> None:
+        self.db.mark_job_seen(
+            key=key, source="gh", company=f"Co-{key}", title="Data Analyst",
+            location="", url=f"https://example.com/{key}", posted="",
+            score=score, label=label,
+        )
+
+    def test_counts_pending_and_sent(self) -> None:
+        self._seen("sent-1")
+        self._seen("waiting-1")
+        self.db.mark_jobs_alerted(["sent-1"])
+
+        stats = self.db.get_delivery_stats()
+        self.assertEqual(stats["pending"], 1)
+        self.assertEqual(stats["alerted_24h"], 1)
+        self.assertTrue(stats["last_alert"])
+
+    def test_reports_nothing_pending_when_all_sent(self) -> None:
+        self._seen("a")
+        self.db.mark_jobs_alerted(["a"])
+        stats = self.db.get_delivery_stats()
+        self.assertEqual(stats["pending"], 0)
+        self.assertEqual(stats["oldest_pending"], "")
+
+    def test_tracks_oldest_waiting_match(self) -> None:
+        self._seen("old")
+        self._seen("new")
+        _backdate(self.path, "old", days=5)
+        self.db = Database(self.path)
+        stats = self.db.get_delivery_stats()
+        self.assertEqual(stats["pending"], 2)
+        # The oldest straggler drives the "waiting N days" warning.
+        self.assertLess(stats["oldest_pending"], datetime.now(timezone.utc).isoformat())

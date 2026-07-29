@@ -1541,13 +1541,113 @@ def run_missed_audit(
     )
 
 
-def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> None:
+def _collect_delivery_stats(db: Database, extra_db_paths: Optional[list[str]]) -> dict:
+    """Aggregate alert-delivery health across every scanner database."""
+    totals = {"pending": 0, "alerted_24h": 0, "alerted_7d": 0, "oldest_pending": "", "last_alert": ""}
+    opened: list[tuple[Database, bool]] = [(db, False)]
+    for raw_path in extra_db_paths or []:
+        path = (raw_path or "").strip()
+        if not path or os.path.abspath(path) == os.path.abspath(db.path):
+            continue
+        if not Path(path).exists():
+            log.warning("Health check: skipping missing database %s", path)
+            continue
+        try:
+            opened.append((Database(path), True))
+        except Exception as exc:
+            log.error("Health check: could not open database %s — %s", path, exc)
+    try:
+        for source_db, _owned in opened:
+            try:
+                s = source_db.get_delivery_stats()
+            except Exception as exc:
+                log.error("Health check: failed reading %s — %s", source_db.path, exc)
+                continue
+            totals["pending"] += s["pending"]
+            totals["alerted_24h"] += s["alerted_24h"]
+            totals["alerted_7d"] += s["alerted_7d"]
+            # Earliest straggler and most recent successful send, across all DBs.
+            if s["oldest_pending"] and (not totals["oldest_pending"] or s["oldest_pending"] < totals["oldest_pending"]):
+                totals["oldest_pending"] = s["oldest_pending"]
+            if s["last_alert"] > totals["last_alert"]:
+                totals["last_alert"] = s["last_alert"]
+    finally:
+        for source_db, owned in opened:
+            if owned:
+                try:
+                    source_db.close()
+                except Exception:
+                    pass
+    return totals
+
+
+def run_health_check(
+    cfg: Config,
+    db: Database,
+    notifier: CompositeNotifier,
+    *,
+    extra_db_paths: Optional[list[str]] = None,
+) -> None:
     """Send a weekly health-check summary email."""
     from datetime import datetime, timezone
     stats = db.get_stats()
+    delivery = _collect_delivery_stats(db, extra_db_paths)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    subject = f"[Job Radar] Weekly Health Check — {ts}"
+    # Flag delivery problems: a stalled digest, or stragglers the audit should
+    # already have swept up (it runs every 3 days, so >4 days is overdue).
+    last_alert = delivery["last_alert"]
+    hours_since_alert = None
+    if last_alert:
+        try:
+            parsed = datetime.fromisoformat(last_alert)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            hours_since_alert = (datetime.now(timezone.utc) - parsed).total_seconds() / 3600.0
+        except ValueError:
+            hours_since_alert = None
+    delivery_warnings: list[str] = []
+    if hours_since_alert is None:
+        delivery_warnings.append("No alert email has ever been recorded as sent.")
+    elif hours_since_alert > 24:
+        delivery_warnings.append(
+            f"No alert email sent in {int(hours_since_alert)}h — the digest runs every 8h, so this looks stalled."
+        )
+    oldest_pending = delivery["oldest_pending"]
+    if oldest_pending:
+        try:
+            parsed_oldest = datetime.fromisoformat(oldest_pending)
+            if parsed_oldest.tzinfo is None:
+                parsed_oldest = parsed_oldest.replace(tzinfo=timezone.utc)
+            days_waiting = (datetime.now(timezone.utc) - parsed_oldest).total_seconds() / 86400.0
+            if days_waiting > 4:
+                delivery_warnings.append(
+                    f"A match has been waiting {int(days_waiting)} days without being emailed."
+                )
+        except ValueError:
+            pass
+
+    subject = (
+        f"[Job Radar] Weekly Health Check — {len(delivery_warnings)} delivery issue(s) — {ts}"
+        if delivery_warnings
+        else f"[Job Radar] Weekly Health Check — {ts}"
+    )
+    last_alert_display = last_alert[:19] if last_alert else "never"
+    oldest_pending_display = oldest_pending[:19] if oldest_pending else "none waiting"
+    delivery_banner = ""
+    if delivery_warnings:
+        items = "".join(f"<li>{w}</li>" for w in delivery_warnings)
+        delivery_banner = (
+            '<div style="background:#fef2f2; border-left:4px solid #dc2626; padding:10px 14px; '
+            'margin:8px 0 12px; border-radius:4px; color:#991b1b; font-size:13px;">'
+            f'<strong>&#9888; Delivery needs attention</strong><ul style="margin:6px 0 0; padding-left:18px;">{items}</ul></div>'
+        )
+    else:
+        delivery_banner = (
+            '<div style="background:#f0fdf4; border-left:4px solid #16a34a; padding:10px 14px; '
+            'margin:8px 0 12px; border-radius:4px; color:#15803d; font-size:13px;">'
+            "<strong>&#10003; Alert delivery is healthy</strong></div>"
+        )
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <style>
@@ -1581,6 +1681,13 @@ def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> 
     <div class="stat"><span>Total jobs tracked</span><span class="stat-val">{stats['total_jobs']}</span></div>
     <div class="stat"><span>Last job activity</span><span class="stat-val">{stats['last_activity'][:19]}</span></div>
     <div class="stat"><span>ATS boards tracked</span><span class="stat-val">{stats['boards']['total']} ({stats['boards']['active']} active)</span></div>
+    <h2 style="font-size:15px; margin:22px 0 8px; padding-bottom:6px; border-bottom:2px solid #1d4ed8; color:#1d4ed8;">Email delivery</h2>
+    {delivery_banner}
+    <div class="stat"><span>Roles emailed (last 24 hrs)</span><span class="stat-val">{delivery['alerted_24h']}</span></div>
+    <div class="stat"><span>Roles emailed (last 7 days)</span><span class="stat-val">{delivery['alerted_7d']}</span></div>
+    <div class="stat"><span>Found but not yet emailed</span><span class="stat-val">{delivery['pending']}</span></div>
+    <div class="stat"><span>Last alert email sent</span><span class="stat-val">{last_alert_display}</span></div>
+    <div class="stat"><span>Oldest waiting match</span><span class="stat-val">{oldest_pending_display}</span></div>
   </div>
   <div class="footer">Powered by Job Radar — targeting Data Analyst · Data Scientist · Data Engineer</div>
 </div></body></html>"""
@@ -1595,6 +1702,13 @@ def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> 
         f"Total jobs tracked  : {stats['total_jobs']}\n"
         f"Last activity       : {stats['last_activity'][:19]}\n"
         f"ATS boards tracked  : {stats['boards']['total']} ({stats['boards']['active']} active)\n"
+        f"\n-- EMAIL DELIVERY --\n"
+        + ("".join(f"!! {w}\n" for w in delivery_warnings) if delivery_warnings else "OK — alert delivery is healthy\n")
+        + f"Emailed last 24h    : {delivery['alerted_24h']}\n"
+        f"Emailed last 7d     : {delivery['alerted_7d']}\n"
+        f"Not yet emailed     : {delivery['pending']}\n"
+        f"Last alert sent     : {last_alert_display}\n"
+        f"Oldest waiting      : {oldest_pending_display}\n"
     )
 
     from email.mime.multipart import MIMEMultipart
@@ -1682,7 +1796,7 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     try:
         if args.health_check:
-            run_health_check(cfg=cfg, db=db, notifier=notifier)
+            run_health_check(cfg=cfg, db=db, notifier=notifier, extra_db_paths=args.digest_db)
             return
 
         if args.mode == "main":
