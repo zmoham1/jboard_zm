@@ -1,0 +1,89 @@
+name: Job Radar — Missed Roles Audit
+
+on:
+  # Every 3rd day at 15:00 UTC (11am EDT / 10am EST) — deliberately offset from
+  # the digest hours (03/11/19 UTC) so the two never overlap. Note that a
+  # day-of-month step restarts each month, so the gap after the 31st is short.
+  schedule:
+    - cron: "0 15 */3 * *"
+  workflow_dispatch:
+    inputs:
+      min_age_hours:
+        description: "Only report matches older than this many hours (default: 24)"
+        required: false
+        default: "24"
+
+permissions:
+  contents: write
+
+# Shares the digest's group so the two can never write state concurrently.
+concurrency:
+  group: job-radar-digest
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Sweeps both scanner databases for matches that were stored but never
+      # emailed — most often MAYBE-only windows held back by the yes-only gate.
+      # Sends nothing when there is nothing missed.
+      - name: Report missed roles
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DB_PATH: state/gha-jobs.db
+        run: |
+          AGE=${{ github.event.inputs.min_age_hours || '24' }}
+          python -m src.main --mode missed \
+            --digest-db state/gha-boards.db \
+            --missed-min-age-hours "$AGE"
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          MAX_BYTES=$((95 * 1024 * 1024))
+          if [ -f state/gha-jobs.db ]; then git add -f state/gha-jobs.db; fi
+          if [ -f state/gha-boards.db ]; then
+            DB_BYTES=$(wc -c < state/gha-boards.db)
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f state/gha-boards.db
+            else
+              echo "::warning file=state/gha-boards.db::Skipping boards DB commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree state/gha-boards.db
+            fi
+          fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update missed-roles audit state [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1

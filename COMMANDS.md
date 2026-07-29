@@ -14,6 +14,7 @@ python -m src.main --mode web
 python -m src.main
 python -m src.main --mode boards
 python -m src.main --mode digest --digest-db state/gha-boards.db
+python -m src.main --mode missed --digest-db state/gha-boards.db
 python -m src.main --test-notify
 python -m src.main --health-check
 ```
@@ -42,6 +43,25 @@ always UTC):
 GitHub cron does not follow daylight saving, so the wall-clock times shift by
 an hour twice a year. The 8-hour spacing is unaffected. To keep the EDT times
 year-round, change the hours to `4,12,20` when EST begins.
+
+## Missed-roles audit (safety net)
+
+`missed.yml` runs `--mode missed` every 3 days (`cron: "0 15 */3 * *"`, 11am
+EDT) and emails anything that was stored but never actually sent, under the
+subject `[Job Radar] Missed roles — ...` so it is distinguishable from a
+normal digest. It sends nothing when nothing was missed.
+
+It exists because the digest can leave matches pending indefinitely:
+
+- `--notify-yes-only` holds a window containing only MAYBE matches until some
+  future YES arrives — the most common cause;
+- a failed delivery leaves that batch pending for retry;
+- any future bug in the repost/suppression logic.
+
+The audit deliberately does **not** apply the yes-only gate, and only reports
+matches older than `--missed-min-age-hours` (default 24) so roles the next
+digest will deliver normally are left alone. Reported roles are stamped, so
+nothing is reported twice.
 
 ## Operating model
 

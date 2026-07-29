@@ -1373,6 +1373,9 @@ def run_digest(
     no_notify: bool,
     notify_yes_only: bool = False,
     extra_db_paths: Optional[list[str]] = None,
+    first_seen_before: str = "",
+    subject_prefix: str = "[Job Radar Digest]",
+    mode: str = "digest",
 ) -> None:
     """Send ONE consolidated email covering all pending (not-yet-alerted) matches.
 
@@ -1380,6 +1383,9 @@ def run_digest(
     every pending YES/MAYBE job across every scanner database, sends a single
     email, and stamps them alerted so they are never re-sent — decoupling alert
     cadence from scan cadence and capping volume at one email per run.
+
+    first_seen_before restricts the sweep to jobs stored before that ISO
+    timestamp; run_missed_audit uses it to report only stragglers.
     """
     notifications_enabled = db.get_feature_flags(
         {"notifications": cfg.features.notifications}
@@ -1411,7 +1417,7 @@ def run_digest(
         groups: dict[str, list[tuple[Job, Database]]] = {}
         for source_db, _owned in sources:
             try:
-                rows = source_db.get_pending_alert_jobs()
+                rows = source_db.get_pending_alert_jobs(first_seen_before=first_seen_before)
             except Exception as exc:
                 log.error("Digest: failed reading %s — %s", source_db.path, exc)
                 continue
@@ -1462,7 +1468,7 @@ def run_digest(
             return
 
         errs = notifier.notify(
-            notify_yes, notify_maybe, subject_prefix="[Job Radar Digest]", mode="digest"
+            notify_yes, notify_maybe, subject_prefix=subject_prefix, mode=mode
         )
         for e in errs:
             log.error("Digest notifier error: %s", e)
@@ -1489,6 +1495,50 @@ def run_digest(
                     source_db.close()
                 except Exception:
                     pass
+
+
+def run_missed_audit(
+    cfg: Config,
+    db: Database,
+    notifier: CompositeNotifier,
+    *,
+    dry_run: bool,
+    no_notify: bool,
+    extra_db_paths: Optional[list[str]] = None,
+    min_age_hours: int = 24,
+) -> None:
+    """Safety net: email any match that was stored but never actually sent.
+
+    The regular digest can leave matches pending indefinitely — most commonly
+    because --notify-yes-only holds a window containing only MAYBE matches
+    until some future YES arrives, but also after a failed delivery or a
+    future bug in the suppression logic. This audit sweeps for stragglers,
+    reports them under their own subject line so they are recognisable as
+    catch-up rather than fresh finds, and stamps them so they are not repeated.
+
+    Unlike the digest it does NOT apply the yes-only gate: catching held-back
+    MAYBE matches is the main reason it exists. Only jobs older than
+    min_age_hours are reported, so roles the next digest will deliver normally
+    are left alone.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(min_age_hours, 0))).isoformat()
+    log.info(
+        "Missed-roles audit: looking for matches stored before %s (older than %dh) that were never emailed.",
+        cutoff[:19],
+        min_age_hours,
+    )
+    run_digest(
+        cfg=cfg,
+        db=db,
+        notifier=notifier,
+        dry_run=dry_run,
+        no_notify=no_notify,
+        notify_yes_only=False,
+        extra_db_paths=extra_db_paths,
+        first_seen_before=cutoff,
+        subject_prefix="[Job Radar] Missed roles —",
+        mode="missed-roles catch-up",
+    )
 
 
 def run_health_check(cfg: Config, db: Database, notifier: CompositeNotifier) -> None:
@@ -1584,13 +1634,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Job Radar — aggregate and alert on new engineering jobs.",
     )
     p.add_argument("--config", default="config.yaml", help="Path to YAML config file (default: config.yaml)")
-    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "web"], help="Run mode (default: main)")
+    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "missed", "web"], help="Run mode (default: main)")
     p.add_argument("--dry-run", action="store_true", help="Fetch jobs but do not save state or send notifications.")
     p.add_argument("--no-notify", action="store_true", help="Save state but skip all notifications.")
     p.add_argument("--notify-yes-only", action="store_true", help="Send notifications only when there is at least one YES match; include MAYBE matches only alongside YES alerts.")
     p.add_argument("--test-notify", action="store_true", help="Send a sample notification without updating state.")
     p.add_argument("--health-check", action="store_true", help="Send a weekly health-check summary email and exit.")
     p.add_argument("--digest-db", action="append", default=[], metavar="PATH", help="Additional scanner database to include in the digest email (repeatable). Used with --mode digest so one email can cover every scanner.")
+    p.add_argument("--missed-min-age-hours", type=int, default=24, help="With --mode missed: only report matches stored at least this many hours ago (default: 24), so roles the next digest will send normally are left alone.")
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
     p.add_argument("--web-host", default="127.0.0.1", help="Web UI host (used with --mode web).")
     p.add_argument("--web-port", type=int, default=8080, help="Web UI port (used with --mode web).")
@@ -1675,6 +1726,16 @@ def main(argv: Optional[list[str]] = None) -> None:
                 no_notify=args.no_notify,
                 notify_yes_only=args.notify_yes_only,
                 extra_db_paths=args.digest_db,
+            )
+        elif args.mode == "missed":
+            run_missed_audit(
+                cfg=cfg,
+                db=db,
+                notifier=notifier,
+                dry_run=args.dry_run,
+                no_notify=args.no_notify,
+                extra_db_paths=args.digest_db,
+                min_age_hours=args.missed_min_age_hours,
             )
         elif args.mode == "priority":
             try:

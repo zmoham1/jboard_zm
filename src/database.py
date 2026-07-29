@@ -343,7 +343,12 @@ class Database:
             row = self._conn.execute("SELECT 1 FROM jobs WHERE key=?", (key,)).fetchone()
         return row is None
 
-    def get_pending_alert_jobs(self, labels: tuple[str, ...] = ("yes", "maybe")) -> list[dict]:
+    def get_pending_alert_jobs(
+        self,
+        labels: tuple[str, ...] = ("yes", "maybe"),
+        *,
+        first_seen_before: str = "",
+    ) -> list[dict]:
         """Return stored jobs that have not yet been included in a digest email.
 
         A job is "pending" when it has been stored (mark_job_seen) but never
@@ -361,9 +366,15 @@ class Database:
         Matching is by canonical_key (company + title) so any surviving copy
         counts as "already sent", falling back to the explicit repost_of_key
         when a row has no canonical key. Highest scores first.
+
+        Pass first_seen_before (an ISO timestamp) to restrict results to jobs
+        stored before that moment — used by the missed-roles audit to report
+        only matches that have already had several digest windows pass them by.
         """
         safe_labels = tuple(l for l in labels if l) or ("yes", "maybe")
         placeholders = ",".join("?" for _ in safe_labels)
+        age_clause = "AND j.first_seen < ?" if first_seen_before else ""
+        params: tuple[object, ...] = safe_labels + ((first_seen_before,) if first_seen_before else ())
         rows = self._conn.execute(
             f"""
             SELECT j.key, j.source, j.company, j.title, j.location, j.url, j.posted,
@@ -382,9 +393,10 @@ class Database:
                         END
                 )
               )
+              {age_clause}
             ORDER BY j.score DESC, j.employer_quality_score DESC, j.last_seen DESC
             """,
-            safe_labels,
+            params,
         ).fetchall()
         return [dict(r) for r in rows]
 
