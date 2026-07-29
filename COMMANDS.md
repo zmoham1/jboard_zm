@@ -107,3 +107,25 @@ python -m src.main --mode web
 ```powershell
 python -m pip install -r requirements.txt
 ```
+
+## Weekly health check
+
+`health.yml` runs `--health-check` every Monday at 9am ET (`cron: "0 13 * * 1"`).
+Beyond job counts it reports **alert delivery**, so a digest that silently
+stops emailing is visible rather than looking like a quiet week:
+
+```
+-- EMAIL DELIVERY --
+OK — alert delivery is healthy
+Emailed last 24h    : 74
+Emailed last 7d     : 512
+Not yet emailed     : 3
+Last alert sent     : 2026-07-28T20:10:52
+Oldest waiting      : none waiting
+```
+
+It raises a warning (and says so in the subject line) when no alert has gone
+out in over 24h — the digest runs every 8h, so that indicates a stall — or
+when a match has been waiting more than 4 days, which the missed-roles audit
+should already have swept up. Delivery figures span every scanner database
+via `--digest-db`.

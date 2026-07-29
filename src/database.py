@@ -1368,6 +1368,33 @@ class Database:
             "boards": board_stats,
         }
 
+    def get_delivery_stats(self) -> dict:
+        """Return alert-delivery health for the weekly health-check email.
+
+        Job counts alone show that scanning works; they say nothing about
+        whether matches actually reached the inbox. These figures close that
+        loop, so a digest that silently stops emailing is visible rather than
+        being mistaken for a quiet week.
+        """
+        pending_rows = self.get_pending_alert_jobs()
+        oldest_pending = min((r["first_seen"] for r in pending_rows), default="")
+        alerted_24h = self._conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE alerted_at <> '' AND alerted_at >= datetime('now','-1 day')"
+        ).fetchone()[0]
+        alerted_7d = self._conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE alerted_at <> '' AND alerted_at >= datetime('now','-7 days')"
+        ).fetchone()[0]
+        last_alert = self._conn.execute(
+            "SELECT MAX(alerted_at) FROM jobs WHERE alerted_at <> ''"
+        ).fetchone()[0] or ""
+        return {
+            "pending": len(pending_rows),
+            "oldest_pending": oldest_pending,
+            "alerted_24h": alerted_24h,
+            "alerted_7d": alerted_7d,
+            "last_alert": last_alert,
+        }
+
     def export_dead_boards_csv(self, out_path: str) -> None:
         import csv
 
