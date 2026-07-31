@@ -129,3 +129,49 @@ out in over 24h — the digest runs every 8h, so that indicates a stall — or
 when a match has been waiting more than 4 days, which the missed-roles audit
 should already have swept up. Delivery figures span every scanner database
 via `--digest-db`.
+
+## Software Developer track (0-3 years)
+
+A completely separate track for early-career software roles. It shares the
+board scrapers but nothing else:
+
+| | Data flow | Software track |
+|---|---|---|
+| Database | `state/gha-jobs.db`, `state/gha-boards.db` | `state/gha-software.db` |
+| Workflow | `boards/priority/main` + `digest` | `software.yml` |
+| Schedule | digest 03/11/19 UTC | 01:25 / 09:25 / 17:25 UTC |
+| Email subject | `[Job Radar Digest]` | `[Job Radar SWE]` |
+
+```powershell
+python -m src.main --track software --mode boards --no-notify
+python -m src.main --track software --mode digest --subject-prefix "[Job Radar SWE]"
+```
+
+`--track software` swaps the classifier's keyword domain and the target-role
+list. It defaults to `data`, so every existing command is unchanged. `main.py`
+refuses to start the software track against `gha-jobs.db` or `gha-boards.db`,
+so the two sets of results can never mix.
+
+### Experience gate
+
+The headline filter is 0-3 years:
+
+- **4+ years stated → blocked** (score forced to 0);
+- **1-3 years stated → ranked highest** (`EXPLICIT_JUNIOR_BONUS`);
+- **nothing stated → included, ranked below explicit 0-3** (most junior
+  postings omit the number, so excluding them would lose real roles).
+
+New Grad / University Grad / Entry Level / `Engineer I` titles get a small
+boost. Internships and co-ops stay excluded, as in the data flow. Titles that
+merely contain "engineer" (civil, mechanical, sales, business development) are
+rejected outright.
+
+### Why this track sends MAYBE matches
+
+Scores here are capped by resume-fit, which is measured against
+`data/resume/base_resume.md` — a data-science resume. Software requirements
+find little matching evidence, so roles rarely reach the `yes` threshold. The
+software digest therefore does **not** use `--notify-yes-only`; that gate would
+silently suppress every alert. To raise the scores, add a software-oriented
+`data/resume/candidate_evidence.local.md` (gitignored) — the evaluator prefers
+it over the tracked resume.

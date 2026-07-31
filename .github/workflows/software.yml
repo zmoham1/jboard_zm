@@ -1,0 +1,108 @@
+name: Job Radar — Software Developer (0-3 yrs)
+
+# Fully separate track: its own database (state/gha-software.db), its own
+# schedule, and its own email subject. It shares only the board scrapers, so
+# nothing here can alter the data-roles flow — the scanners write to a
+# different file and main.py refuses to run this track against the data DBs.
+
+on:
+  # Offset from every data-flow schedule (digest 03/11/19, audit 15, health 13).
+  schedule:
+    - cron: "25 1,9,17 * * *"   # 3x/day, 8h apart — 9pm/5am/1pm ET
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "Boards per batch (default: 50)"
+        required: false
+        default: "50"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: job-radar-software
+  cancel-in-progress: false
+
+env:
+  DB_PATH: state/gha-software.db
+
+jobs:
+  software:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Scan silently — matches are stored, not emailed, exactly like the data
+      # flow. The digest step below is what sends mail.
+      - name: Scan boards for software roles
+        env:
+          BOARDS_RESCAN_COOLDOWN_HOURS: ${{ github.event_name == 'schedule' && '0' || '' }}
+        run: |
+          BATCH=${{ github.event.inputs.batch_size || '50' }}
+          python -m src.main --track software --mode boards \
+            --boards-batch-size "$BATCH" \
+            --boards-run-until-wrap \
+            --no-notify
+
+      - name: Scan main sources for software roles
+        run: python -m src.main --track software --mode main --no-notify
+        continue-on-error: true
+
+      # One consolidated email per run, under its own subject so it never gets
+      # confused with the data digest. Note this deliberately does NOT use
+      # --notify-yes-only: scores on this track are capped by resume-fit
+      # against a data-focused resume, so "yes" is rarely reachable and the
+      # gate would silently suppress every alert.
+      - name: Send software digest
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python -m src.main --track software --mode digest \
+            --subject-prefix "[Job Radar SWE]"
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          MAX_BYTES=$((95 * 1024 * 1024))
+          if [ -f state/gha-software.db ]; then
+            DB_BYTES=$(wc -c < state/gha-software.db)
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f state/gha-software.db
+            else
+              echo "::warning file=state/gha-software.db::Skipping software DB commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree state/gha-software.db
+            fi
+          fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update software track state [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1
