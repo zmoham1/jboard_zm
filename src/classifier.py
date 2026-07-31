@@ -17,6 +17,8 @@ import re
 from dataclasses import dataclass
 
 from .software_keywords import (
+    DATA_DOMAIN_EXCLUDES,
+    MANAGEMENT_EXCLUDES,
     EARLY_CAREER_SIGNALS,
     SOFTWARE_HARD_EXCLUDES,
     SOFTWARE_STRONG,
@@ -271,6 +273,10 @@ CLEARANCE_EXCLUDE_REGEXES = [
     r"\bpolygraph\b",            # Polygraph
     r"\bpublic\s+trust\b",       # Public Trust
     r"\bclearance\b",            # any "clearance" in title
+    # "Secret cleared", "TS cleared", "must be cleared" — the participle form
+    # was missed by the \bclearance\b rule, so titles like
+    # "Data Scientist/Application Developer (Secret cleared)" scored as matches.
+    r"\bcleared\b",
     r"\bus\s+citizen",           # US citizen / US citizenship
     r"\bcitizenship\b",          # citizenship requirement
     r"\bsci\b",                  # SCI in title (often paired with TS)
@@ -353,8 +359,44 @@ def get_active_track() -> str:
     return _active_track
 
 
+def _seniority_cap(t: str) -> int:
+    """Strictest seniority ceiling implied by a title.
+
+    Every matching token is considered, not just the first one found. Stopping
+    at the first match let token order decide the outcome: "Sr. Director" hit
+    "senior" before "director" and was capped at 65 (surfaced as a match)
+    instead of 34 (rejected), so director-level roles leaked through.
+    """
+    cap = 100
+    for tok in SENIORITY_TOKENS:
+        if re.search(rf"\b{re.escape(tok)}\b", t):
+            cap = min(cap, 34 if tok in VERY_SENIOR else 65)
+    return cap
+
+
 def _classify_software(t: str) -> ClassifyResult:
     """Score a title for early-career software-engineering relevance."""
+    # Data-domain roles belong to the data flow, not here.
+    for phrase in DATA_DOMAIN_EXCLUDES:
+        if phrase in t:
+            return ClassifyResult(score=0, label="no")
+
+    # Management and high-level IC titles are out of range for a 0-3 year search.
+    for phrase in MANAGEMENT_EXCLUDES:
+        if re.search(rf"\b{re.escape(phrase)}\b", t):
+            return ClassifyResult(score=0, label="no")
+
+    # Any seniority marker at all disqualifies a 0-3 year search. The shared cap
+    # only demotes these to "maybe", which still surfaced real postings like
+    # "Senior Software Engineer" and "Staff Software Engineer, Full Stack".
+    # Senior/staff/lead are by definition outside the target range.
+    if _seniority_cap(t) < 100:
+        return ClassifyResult(score=0, label="no")
+
+    # Job levels beyond II / 2 imply more than three years.
+    if re.search(r"\b(?:iii|iv|v|vi)\b", t) or re.search(r"\b[3-9]\b", t):
+        return ClassifyResult(score=0, label="no")
+
     # Non-software uses of "engineer"/"developer" (civil, sales, business dev).
     for phrase in SOFTWARE_HARD_EXCLUDES:
         if phrase in t:
@@ -374,13 +416,7 @@ def _classify_software(t: str) -> ClassifyResult:
         score = min(100, score + 8)
 
     # Seniority caps, same policy as the data track.
-    for tok in SENIORITY_TOKENS:
-        if re.search(rf"\b{re.escape(tok)}\b", t):
-            if tok in VERY_SENIOR:
-                score = min(score, 34)
-            else:
-                score = min(score, 65)
-            break
+    score = min(score, _seniority_cap(t))
 
     score = max(0, min(score, 100))
     if score >= 70:
@@ -437,13 +473,7 @@ def classify(title: str) -> ClassifyResult:
     score = 90 if strong else 55
 
     # Seniority cap — senior/staff/principal → "maybe"; director/vp → "no"
-    for tok in SENIORITY_TOKENS:
-        if re.search(rf"\b{re.escape(tok)}\b", t):
-            if tok in VERY_SENIOR:
-                score = min(score, 34)
-            else:
-                score = min(score, 65)
-            break
+    score = min(score, _seniority_cap(t))
 
     score = max(0, min(score, 100))
 

@@ -101,6 +101,55 @@ SOFTWARE_WEAK = [
     "infrastructure engineer",
 ]
 
+# Data-domain roles. These belong to the data flow and must not appear in the
+# software track, or the two searches return the same jobs. Without this,
+# "Data Platform Engineer" and "Data Scientist, Application Developer" both
+# scored 90 here purely on the "platform engineer"/"application developer"
+# substrings.
+DATA_DOMAIN_EXCLUDES = [
+    "data engineer",
+    "data engineering",
+    "data scientist",
+    "data science",
+    "data analyst",
+    "data analytics",
+    "data platform",
+    "analytics engineer",
+    "machine learning",
+    "ml engineer",
+    "mlops",
+    "business intelligence",
+    "bi developer",
+    "bi engineer",
+    "data architect",
+    "database administrator",
+    "etl developer",
+    "data warehouse",
+    "data visualization",
+    "analytics",
+    "bi analyst",
+    "business analyst",
+    "snowflake",
+    "databricks",
+    "decision scientist",
+]
+
+# People-management and high-level IC titles. A 0-3 year search should never
+# surface these, and the shared seniority cap only demotes them to "maybe" —
+# real postings like "Software Development Manager" were still coming through.
+MANAGEMENT_EXCLUDES = [
+    "manager",
+    "director",
+    "head of",
+    "vp",
+    "vice president",
+    "principal",
+    "staff engineer",
+    "distinguished",
+    "fellow",
+    "architect",
+]
+
 # Titles that merely contain "engineer"/"developer" but are not software roles.
 # Checked before the weak list so civil/mechanical/sales roles do not leak in.
 SOFTWARE_HARD_EXCLUDES = [
