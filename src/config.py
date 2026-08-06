@@ -1,10 +1,13 @@
 """Configuration management: YAML file + environment variable overrides."""
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 try:
     import yaml
@@ -126,16 +129,16 @@ class Config:
         )
 
         # HTTP timeout
-        cfg.http_timeout = int(os.environ.get("HTTP_TIMEOUT", raw.get("http_timeout", 30)))
+        cfg.http_timeout = _env_int("HTTP_TIMEOUT", raw.get("http_timeout", 30))
 
         # Boards
         bo = raw.get("boards", {}) or {}
         cfg.boards.csv = os.environ.get("BOARDS_CSV", bo.get("csv", ""))
-        cfg.boards.batch_size = int(os.environ.get("BOARDS_BATCH_SIZE", bo.get("batch_size", 50)))
-        cfg.boards.workers = int(os.environ.get("BOARDS_WORKERS", bo.get("workers", 12)))
-        cfg.boards.timeout = int(os.environ.get("BOARDS_TIMEOUT", bo.get("timeout", 30)))
-        cfg.boards.rescan_cooldown_hours = int(
-            os.environ.get("BOARDS_RESCAN_COOLDOWN_HOURS", bo.get("rescan_cooldown_hours", 0))
+        cfg.boards.batch_size = _env_int("BOARDS_BATCH_SIZE", bo.get("batch_size", 50))
+        cfg.boards.workers = _env_int("BOARDS_WORKERS", bo.get("workers", 12))
+        cfg.boards.timeout = _env_int("BOARDS_TIMEOUT", bo.get("timeout", 30))
+        cfg.boards.rescan_cooldown_hours = _env_int(
+            "BOARDS_RESCAN_COOLDOWN_HOURS", bo.get("rescan_cooldown_hours", 0)
         )
 
         # Feature toggles
@@ -159,7 +162,7 @@ class Config:
             s = src_raw.get(name, {}) or {}
             cfg.sources[name] = SourceConfig(
                 enabled=_bool(s.get("enabled", True)),
-                max_jobs=int(os.environ.get(f"MAX_{name.upper()}_JOBS", s.get("max_jobs", default_max))),
+                max_jobs=_env_int(f"MAX_{name.upper()}_JOBS", s.get("max_jobs", default_max)),
             )
 
         return cfg
@@ -182,3 +185,24 @@ def _bool(val) -> bool:
     if isinstance(val, bool):
         return val
     return str(val).lower() in ("1", "true", "yes")
+
+
+def _env_int(name: str, fallback) -> int:
+    """Read an integer setting, treating an empty environment variable as unset.
+
+    os.environ.get(name, default) returns '' when the variable is set but
+    empty, so the default never applies and int('') raises. boards.yml does
+    exactly that — it sets BOARDS_RESCAN_COOLDOWN_HOURS to '' on any
+    non-schedule event to mean "use the configured value" — which made every
+    manual run of the board sweep die during config load:
+
+        ValueError: invalid literal for int() with base 10: ''
+    """
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return int(fallback)
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        log.warning("%s=%r is not an integer; using %r instead.", name, raw, fallback)
+        return int(fallback)
