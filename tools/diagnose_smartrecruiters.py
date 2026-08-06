@@ -1,66 +1,93 @@
-"""Probe SmartRecruiters endpoints for boards that return zero postings.
+"""Find which endpoint the SmartRecruiters careers page actually calls.
 
-299 of 323 SmartRecruiters boards have returned "0 jobs returned" on every
-sweep since 2026-05-11, while 24 work. The URL shapes are identical, so the
-difference is not slug parsing. This probes several endpoints for a sample of
-failing and working slugs so the real cause is measured rather than guessed.
+Probe 1 established that api.smartrecruiters.com/v1/companies/<slug>/postings
+returns {"totalFound": 0, "content": []} for 299 boards whose careers pages
+load fine, and under-reports badly even for the 24 that "work" (Visa returns
+2 postings). So the adapter is on the wrong endpoint.
 
-Run on CI, where outbound network is available.
+This fetches the careers page, extracts any API URLs it references, counts the
+job cards it renders, and tries candidate endpoints — so the replacement is
+chosen from evidence instead of guessed.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 import requests
 
-FAILING = ["CoStarGroup", "Criteo", "AppFolio", "Compass", "doclerholding"]
-WORKING = ["Visa", "Yardi", "Buildium"]
-
-HEADERS = {"accept": "application/json", "user-agent": "Mozilla/5.0"}
+SLUGS = ["Compass", "Criteo", "AppFolio", "Visa"]
+HDR = {"accept": "*/*", "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
 
 
-def probe(label: str, url: str, params: dict | None = None) -> None:
+def get(url: str, params: dict | None = None):
     try:
-        r = requests.get(url, params=params or {}, headers=HEADERS, timeout=30)
+        return requests.get(url, params=params or {}, headers=HDR, timeout=30)
     except Exception as exc:
-        print(f"      {label:<26} EXC {type(exc).__name__}: {exc}")
-        return
-    body = ""
-    count = None
-    if r.headers.get("content-type", "").startswith("application/json"):
-        try:
-            data = r.json()
-            if isinstance(data, dict):
-                count = data.get("totalFound")
-                for key in ("content", "postings", "jobs"):
-                    if isinstance(data.get(key), list):
-                        count = f"{count} totalFound / {len(data[key])} in '{key}'"
-                        break
-                body = json.dumps(data)[:160]
-        except Exception:
-            body = r.text[:160]
-    else:
-        body = r.text[:160].replace("\n", " ")
-    print(f"      {label:<26} HTTP {r.status_code}  count={count}")
-    if r.status_code != 200 or count in (None, 0, "0 totalFound / 0 in 'content'"):
-        print(f"        body: {body[:150]}")
+        print(f"      EXC {type(exc).__name__}: {exc}")
+        return None
+
+
+def count_json(r) -> str:
+    if r is None:
+        return "-"
+    if r.status_code != 200:
+        return f"HTTP {r.status_code}"
+    try:
+        d = r.json()
+    except Exception:
+        return f"HTTP 200 non-json ({len(r.content)}b)"
+    if isinstance(d, dict):
+        for k in ("content", "postings", "jobs", "results"):
+            if isinstance(d.get(k), list):
+                return f"HTTP 200  totalFound={d.get('totalFound')}  len({k})={len(d[k])}"
+        return f"HTTP 200 keys={list(d)[:6]}"
+    if isinstance(d, list):
+        return f"HTTP 200  list len={len(d)}"
+    return "HTTP 200 ?"
 
 
 def main() -> int:
-    for group, slugs in (("FAILING", FAILING), ("WORKING", WORKING)):
-        print(f"\n=== {group} SLUGS ===")
-        for slug in slugs:
-            print(f"  {slug}:")
-            # 1. Endpoint the adapter uses today.
-            probe("v1 postings", f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
-                  {"offset": 0, "limit": 100})
-            # 2. Same endpoint without paging params, in case params break it.
-            probe("v1 postings (no params)", f"https://api.smartrecruiters.com/v1/companies/{slug}/postings")
-            # 3. Public careers-page JSON used by the widget.
-            probe("careers api", f"https://careers.smartrecruiters.com/{slug}/api/groups")
-            # 4. The public HTML page — proves whether the company exists at all.
-            probe("public html", f"https://jobs.smartrecruiters.com/{slug}")
+    for slug in SLUGS:
+        print(f"\n{'='*66}\n{slug}\n{'='*66}")
+
+        html_resp = get(f"https://jobs.smartrecruiters.com/{slug}")
+        html = html_resp.text if html_resp is not None else ""
+        print(f"  careers page: HTTP {getattr(html_resp,'status_code','-')}  {len(html)} bytes")
+
+        # How many job cards does the page itself render?
+        for pat, label in (
+            (r'opportunity-link', "opportunity-link"),
+            (r'js-company-job', "js-company-job"),
+            (r'/{}/\d{{6,}}'.format(re.escape(slug)), "posting-id links"),
+        ):
+            n = len(re.findall(pat, html))
+            if n:
+                print(f"     rendered job markers: {label} x{n}")
+
+        # Any API hosts / paths referenced by the page.
+        urls = set(re.findall(r'https?://[a-z0-9.\-]*smartrecruiters\.com/[A-Za-z0-9/_\-.?=&%{}]+', html))
+        api_like = sorted(u for u in urls if any(k in u.lower() for k in ("api", "json", "postings", "search", "graphql")))
+        if api_like:
+            print("     API-ish URLs referenced by the page:")
+            for u in api_like[:8]:
+                print(f"        {u[:120]}")
+
+        # Embedded JSON blobs that may hold the postings.
+        for m in re.finditer(r'window\.(\w+)\s*=\s*(\{.{0,120})', html):
+            print(f"     inline state: window.{m.group(1)} = {m.group(2)[:80]}...")
+
+        print("  candidate endpoints:")
+        cands = [
+            ("v1 postings (current)", f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", {"limit": 100}),
+            ("v1 postings custom",    f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", {"limit": 100, "custom_field": ""}),
+            ("careers /api/more",     f"https://jobs.smartrecruiters.com/{slug}/api/more", {"page": 0}),
+            ("careers /api/groups",   f"https://jobs.smartrecruiters.com/{slug}/api/groups", None),
+            ("search postings",       f"https://api.smartrecruiters.com/v1/companies/{slug}/postings/search", {"limit": 100}),
+        ]
+        for label, url, params in cands:
+            print(f"     {label:<24} {count_json(get(url, params))}")
     return 0
 
 
