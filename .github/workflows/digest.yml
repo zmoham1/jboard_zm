@@ -2,11 +2,12 @@ name: Job Radar — Email Digest
 
 on:
   schedule:
-    # 3x/day, 8h apart — exactly one email per run. Cron is always UTC, so
-    # these are anchored to US Eastern: 03/11/19 UTC = 11pm/7am/3pm EDT
-    # (Mar–Nov). During EST (Nov–Mar) they land an hour earlier —
-    # 10pm/6am/2pm — since GitHub cron does not follow daylight saving.
-    - cron: "0 3,11,19 * * *"
+    # 3x/day, 8h apart. Scheduled 20 min before the target hour and off the
+    # top of the hour: GitHub's shared scheduler is most congested at :00, and
+    # runs here were starting 1h47m to 5h35m late, so a 3pm ET digest arrived
+    # at 8:35pm. Target arrival is 03:00 / 11:00 / 19:00 UTC = 11pm / 7am / 3pm
+    # EDT (an hour earlier during EST; cron does not follow daylight saving).
+    - cron: "40 2,10,18 * * *"
   workflow_dispatch:
 
 permissions:
