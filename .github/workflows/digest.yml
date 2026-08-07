@@ -12,9 +12,14 @@ on:
 permissions:
   contents: write
 
-# Serialized against both scanners so the SQLite state commits never collide.
+# Every workflow that commits a shared state database uses this one group.
+# git cannot merge binary files, so two of them running at once produce an
+# unresolvable rebase conflict on the SQLite file and the run dies:
+#     CONFLICT (content): Merge conflict in state/gha-boards.db
+# Serializing them is the fix; cancel-in-progress stays false so a queued run
+# waits its turn rather than being dropped.
 concurrency:
-  group: job-radar-digest
+  group: job-radar-shared-state
   cancel-in-progress: false
 
 jobs:
@@ -75,6 +80,9 @@ jobs:
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
+              # A binary conflict leaves the repo mid-rebase; without aborting,
+              # every later attempt fails on the same unresolved state.
+              git rebase --abort 2>/dev/null || true
               echo "Push race detected on attempt $attempt; retrying after a short pause."
               sleep 3
             fi
