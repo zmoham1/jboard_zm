@@ -2,7 +2,7 @@ name: Job Radar — Weekly Health Check
 
 on:
   schedule:
-    - cron: "0 13 * * 1"   # Every Monday at 9am ET (13:00 UTC)
+    - cron: "23 13 * * 1"   # Every Monday at 9am ET (13:00 UTC)
   workflow_dispatch:         # Manual trigger anytime
 
 permissions:

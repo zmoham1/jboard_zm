@@ -5,7 +5,7 @@ on:
   # the digest hours (03/11/19 UTC) so the two never overlap. Note that a
   # day-of-month step restarts each month, so the gap after the 31st is short.
   schedule:
-    - cron: "0 15 */3 * *"
+    - cron: "23 15 */3 * *"
   workflow_dispatch:
     inputs:
       min_age_hours:
