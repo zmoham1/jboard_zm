@@ -12,9 +12,12 @@ from .classifier import (
     CLEARANCE_EXCLUDE_REGEXES,
     HARD_EXCLUDE_REGEXES,
     SENIORITY_TOKENS,
+    TRACK_SOFTWARE,
     VERY_SENIOR,
     classify,
+    get_active_track,
 )
+from .software_keywords import SOFTWARE_TARGET_ROLES
 from .config import Config
 from .profile import PROFILE, SKILLS_MODERATE, SKILLS_STRONG
 from .scoring_policy import DEFAULT_MAYBE_THRESHOLD, DEFAULT_YES_THRESHOLD, label_for_score
@@ -395,10 +398,17 @@ def _match_skills(title: str, description: str) -> tuple[list[str], list[str], i
     return matched_strong, matched_moderate, strong_points, moderate_points
 
 
+def _active_target_roles() -> list[str]:
+    """Target roles for the active track (data roles unless running software)."""
+    if get_active_track() == TRACK_SOFTWARE:
+        return list(SOFTWARE_TARGET_ROLES)
+    return list(PROFILE.get("target_roles", []))
+
+
 def _target_role_hits(text: str) -> list[str]:
     hits: list[str] = []
     normalized_text = _norm(text)
-    for role in PROFILE.get("target_roles", []):
+    for role in _active_target_roles():
         aliases = TARGET_ROLE_ALIASES.get(role, (role,))
         if any(_phrase_match(normalized_text, alias) for alias in aliases):
             hits.append(role)
@@ -562,6 +572,43 @@ def _experience_penalty(text: str, years_text: str = "") -> tuple[int, str]:
     if years_required <= 3:
         return 0, ""
     return 100, f"Blocked because the role requires {years_required}+ years of experience, above your 0-3 year target range."
+
+
+# Ceiling applied on the software track when a posting never states a number of
+# years. Most genuine junior roles omit it, so they stay eligible for "yes"
+# (threshold 70) — but always rank below a posting that explicitly says 0-3.
+UNSTATED_EXPERIENCE_CAP = 79
+
+
+# Awarded on the software track when a posting explicitly asks for 1-3 years.
+# The cap above alone cannot order these, because it only binds on high scores;
+# this bonus is what actually lifts an explicit junior posting above a silent one.
+EXPLICIT_JUNIOR_BONUS = 8
+
+
+def _explicit_junior_bonus(text: str, years_text: str = "") -> tuple[int, str]:
+    """Rank postings that explicitly ask for 0-3 years above those that say nothing."""
+    if get_active_track() != TRACK_SOFTWARE:
+        return 0, ""
+    years_required = _extract_years_requirement(years_text or text)
+    if 1 <= years_required <= 3:
+        return (
+            EXPLICIT_JUNIOR_BONUS,
+            f"The posting explicitly asks for {years_required} year(s) of experience, inside your 0-3 year target.",
+        )
+    return 0, ""
+
+
+def _unstated_experience_cap(text: str, years_text: str = "") -> tuple[int, str]:
+    """Rank postings with no stated experience below those explicitly at 0-3 years."""
+    if get_active_track() != TRACK_SOFTWARE:
+        return 100, ""
+    if _extract_years_requirement(years_text or text) > 0:
+        return 100, ""
+    return (
+        UNSTATED_EXPERIENCE_CAP,
+        "The posting does not state a years-of-experience requirement, so it ranks below roles that explicitly ask for 0-3 years.",
+    )
 
 
 def _location_block(location: str, text: str, *, require_us_location: bool) -> str:
@@ -805,14 +852,17 @@ def evaluate_job(
     ]
 
     experience_penalty, experience_reason = _experience_penalty(text, years_text)
-    score = round(sum(d.weighted_points for d in dimensions) - experience_penalty)
+    junior_bonus, junior_bonus_reason = _explicit_junior_bonus(text, years_text)
+    score = round(sum(d.weighted_points for d in dimensions) - experience_penalty + junior_bonus)
     evidence_cap, evidence_cap_reason = _evidence_score_cap(description, source)
     resume_cap, resume_cap_reason = _resume_gap_score_cap(assessment)
     onsite_cap, onsite_cap_reason = _onsite_mismatch_cap(location, text)
+    unstated_cap, unstated_cap_reason = _unstated_experience_cap(text, years_text)
     remote_review_reason = _remote_scope_review_reason(location, text)
     score = min(score, evidence_cap)
     score = min(score, resume_cap)
     score = min(score, onsite_cap)
+    score = min(score, unstated_cap)
     if remote_review_reason:
         score = min(score, 69)
     score = max(0, min(score, 100))
@@ -829,6 +879,10 @@ def evaluate_job(
         reasons.insert(0, resume_cap_reason)
     if onsite_cap_reason and onsite_cap_reason not in reasons:
         reasons.insert(0, onsite_cap_reason)
+    if unstated_cap_reason and unstated_cap_reason not in reasons:
+        reasons.insert(0, unstated_cap_reason)
+    if junior_bonus_reason and junior_bonus_reason not in reasons:
+        reasons.insert(0, junior_bonus_reason)
     if remote_review_reason and remote_review_reason not in reasons:
         reasons.insert(0, remote_review_reason)
     # Surface a detected clearance/citizenship requirement explicitly. It lives

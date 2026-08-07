@@ -29,7 +29,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from .classifier import is_match, classify
+from .classifier import TRACK_SOFTWARE, is_match, classify, set_active_track
 from .company_priority import company_score_adjustment
 from .config import Config
 from .database import Database
@@ -76,6 +76,11 @@ SUPPORTED_BOARD_PLATFORMS = (
 )
 
 log = logging.getLogger(__name__)
+
+# Subject prefix for alert emails. Overridden via --subject-prefix so a
+# separate track (e.g. software) is instantly recognisable in the inbox.
+ALERT_SUBJECT_PREFIX = "[Job Radar]"
+DIGEST_SUBJECT_PREFIX = "[Job Radar Digest]"
 
 
 def _auto_sync_repo_before_web(*, repo_root: str, branch: str = "main") -> None:
@@ -1227,7 +1232,7 @@ def _dispatch_results(
         if no_notify or not notifications_enabled:
             log.info("[no-notify] Would alert: %d yes + %d maybe", len(notify_yes), len(notify_maybe))
         else:
-            errs = notifier.notify(notify_yes, notify_maybe, subject_prefix="[Job Radar]", mode=mode, source_errors=source_errors)
+            errs = notifier.notify(notify_yes, notify_maybe, subject_prefix=ALERT_SUBJECT_PREFIX, mode=mode, source_errors=source_errors)
             for e in errs:
                 log.error("Notifier error: %s", e)
     else:
@@ -1386,7 +1391,7 @@ def run_digest(
     notify_yes_only: bool = False,
     extra_db_paths: Optional[list[str]] = None,
     first_seen_before: str = "",
-    subject_prefix: str = "[Job Radar Digest]",
+    subject_prefix: str = "",
     mode: str = "digest",
 ) -> None:
     """Send ONE consolidated email covering all pending (not-yet-alerted) matches.
@@ -1399,6 +1404,7 @@ def run_digest(
     first_seen_before restricts the sweep to jobs stored before that ISO
     timestamp; run_missed_audit uses it to report only stragglers.
     """
+    subject_prefix = subject_prefix or DIGEST_SUBJECT_PREFIX
     notifications_enabled = db.get_feature_flags(
         {"notifications": cfg.features.notifications}
     )["notifications"]
@@ -1768,6 +1774,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--health-check", action="store_true", help="Send a weekly health-check summary email and exit.")
     p.add_argument("--digest-db", action="append", default=[], metavar="PATH", help="Additional scanner database to include in the digest email (repeatable). Used with --mode digest so one email can cover every scanner.")
     p.add_argument("--missed-min-age-hours", type=int, default=24, help="With --mode missed: only report matches stored at least this many hours ago (default: 24), so roles the next digest will send normally are left alone.")
+    p.add_argument("--track", default="data", choices=["data", "software"], help="Which role domain to scan for (default: data). 'software' targets early-career Software Developer roles and must be pointed at its own DB_PATH so it never mixes with the data flow.")
+    p.add_argument("--subject-prefix", default="", help="Override the alert email subject prefix (e.g. '[Job Radar SWE]') so a separate track's emails are distinguishable.")
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
     p.add_argument("--web-host", default="127.0.0.1", help="Web UI host (used with --mode web).")
     p.add_argument("--web-port", type=int, default=8080, help="Web UI port (used with --mode web).")
@@ -1800,7 +1808,29 @@ def main(argv: Optional[list[str]] = None) -> None:
         if not args.web_no_git_sync:
             _auto_sync_repo_before_web(repo_root=str(Path(ROOT_DIR)), branch="main")
 
+    if args.subject_prefix:
+        global ALERT_SUBJECT_PREFIX, DIGEST_SUBJECT_PREFIX
+        ALERT_SUBJECT_PREFIX = args.subject_prefix
+        DIGEST_SUBJECT_PREFIX = args.subject_prefix
+
     cfg = Config.load(args.config)
+
+    # Select the role domain before anything scores a title. Sources import
+    # classify() directly, so this switch is what makes them software-aware.
+    if args.track == "software":
+        set_active_track(TRACK_SOFTWARE)
+        # Hard guard: the software track must never write into the data
+        # databases. Sharing one would corrupt both sets of results, since the
+        # two tracks score the same titles completely differently.
+        db_name = os.path.basename(cfg.database.path)
+        if db_name in ("gha-jobs.db", "gha-boards.db"):
+            log.error(
+                "Refusing to run the software track against %s — set DB_PATH to a separate "
+                "database (for example state/gha-software.db) so the data flow is untouched.",
+                cfg.database.path,
+            )
+            sys.exit(1)
+        log.info("Software track active — scanning early-career Software Developer roles (0-3 years).")
 
     db = _open_database(cfg)
 
