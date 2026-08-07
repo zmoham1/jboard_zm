@@ -284,6 +284,14 @@ def build_notifier(cfg: Config) -> CompositeNotifier:
 
 MAX_JOB_AGE_DAYS = 30
 
+# How much per-source scan history to keep. Scan history grows ~15,500 rows a
+# day across the board sweep, at ~321 bytes per row including indexes, so the
+# window directly sets the file size: 3 days lands the boards database near
+# 30 MiB, 14 days near 82 MiB against a 95 MiB commit guard. Three days keeps
+# ~46,000 rows — still 9x more than the 5,000-row cap any dashboard query
+# reads — and leaves durable headroom as the board list grows.
+SOURCE_RUN_RETENTION_DAYS = 3
+
 _DATE_FORMATS = [
     "%Y-%m-%dT%H:%M:%S%z",
     "%Y-%m-%dT%H:%M:%SZ",
@@ -1262,6 +1270,10 @@ def _dispatch_results(
 
         # Auto-expiry: clean up jobs not seen in 14 days to keep the DB lean.
         db.expire_old_jobs(days=14)
+        # Scan history is the real growth driver — ~15k rows a day across the
+        # board sweep — so it needs its own retention or the database outgrows
+        # the size guard in boards.yml and the committed state stops updating.
+        db.prune_source_runs(days=SOURCE_RUN_RETENTION_DAYS)
     return {
         "matched_keys": {j.key for j in matched},
         "yes_keys": {j.key for j in yes_jobs},

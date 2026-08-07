@@ -1331,6 +1331,38 @@ class Database:
             log.info("Expired %d stale job(s) older than %d days", deleted, days)
         return deleted
 
+    def prune_source_runs(self, days: int = 3) -> int:
+        """Delete scan-history rows older than `days`. Returns count deleted.
+
+        source_runs records every board scan — roughly 15k rows a day across
+        1,292 boards — and had no retention policy, so it grew without bound.
+        It reached 254,721 rows and 78 MiB of the boards database (83% of the
+        file), pushing it past the 95 MiB commit guard in boards.yml. The
+        sweep's results were then discarded on every run and the committed
+        database sat frozen for 13 days.
+
+        The newest run per (source_key, entity_type) is always kept, whatever
+        its age: get_latest_source_run feeds _should_alert_on_run, and deleting
+        a source's only row would make every later failure look like a
+        first-ever failure and re-alert. Dashboard queries read at most 5,000
+        rows, so a few days of history is ample.
+        """
+        with self._tx() as conn:
+            cur = conn.execute(
+                """
+                DELETE FROM source_runs
+                WHERE finished_at < datetime('now', ?)
+                  AND id NOT IN (
+                    SELECT MAX(id) FROM source_runs GROUP BY source_key, entity_type
+                  )
+                """,
+                (f"-{days} days",),
+            )
+            deleted = cur.rowcount
+        if deleted:
+            log.info("Pruned %d source-run record(s) older than %d days", deleted, days)
+        return deleted
+
     def is_duplicate_title(self, company: str, title: str) -> bool:
         """Return True if we already have a job with the same company+title in the DB."""
         row = self._conn.execute(
