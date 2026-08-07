@@ -22,7 +22,9 @@ from typing import Optional
 import requests
 
 from .sources.base import Job
+from .classifier import TRACK_SOFTWARE, get_active_track
 from .profile import PROFILE, profile_summary_html, profile_summary_text
+from .software_keywords import SOFTWARE_TARGET_ROLES
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +75,7 @@ _HTML_TEMPLATE = """\
 <body>
 <div class="container">
   <div class="header">
-    <h1>Job Radar &mdash; Data Roles Alert</h1>
+    <h1>Job Radar &mdash; {headline}</h1>
     <p>{timestamp} &mdash; {mode} mode &mdash; {candidate_name}</p>
   </div>
   <div class="section">
@@ -87,7 +89,7 @@ _HTML_TEMPLATE = """\
     {maybe_section}
   </div>
   <div class="footer">
-    Powered by Job Radar &mdash; targeting Data Analyst · Data Scientist · Data Engineer
+    Powered by Job Radar &mdash; targeting {footer_roles}
     {error_section}
   </div>
 </div>
@@ -113,7 +115,22 @@ def _build_html(yes_jobs: list[Job], maybe_jobs: list[Job], mode: str, source_er
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     candidate_name = PROFILE["name"]
-    profile_line = profile_summary_html()
+    # The software track scores an entirely different role set, so a digest
+    # for it must not announce itself as a data-roles alert or list data
+    # target roles — the first SWE email did exactly that.
+    if get_active_track() == TRACK_SOFTWARE:
+        headline = "Software Roles Alert (0-3 yrs)"
+        footer_roles = "Software Developer · Backend · Frontend · Full Stack (0-3 yrs)"
+        roles = ", ".join(SOFTWARE_TARGET_ROLES[:4])
+        profile_line = (
+            f"<p style='font-size:12px;color:#666;margin:0 0 8px'>"
+            f"Matched for <strong>{candidate_name}</strong> - "
+            f"targeting <em>{roles}...</em></p>"
+        )
+    else:
+        headline = "Data Roles Alert"
+        footer_roles = "Data Analyst · Data Scientist · Data Engineer"
+        profile_line = profile_summary_html()
 
     def _card(job: Job) -> str:
         posted_line = f" &middot; {job.posted}" if job.posted else ""
@@ -158,7 +175,8 @@ def _build_html(yes_jobs: list[Job], maybe_jobs: list[Job], mode: str, source_er
         )
 
     return _HTML_TEMPLATE.format(
-        timestamp=ts, mode=mode, candidate_name=candidate_name,
+        timestamp=ts, mode=mode, candidate_name=candidate_name, headline=headline,
+        footer_roles=footer_roles,
         yes_count=len(yes_jobs), maybe_count=len(maybe_jobs),
         total_count=len(yes_jobs) + len(maybe_jobs),
         profile_line=profile_line,
