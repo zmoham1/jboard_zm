@@ -175,3 +175,18 @@ software digest therefore does **not** use `--notify-yes-only`; that gate would
 silently suppress every alert. To raise the scores, add a software-oriented
 `data/resume/candidate_evidence.local.md` (gitignored) — the evaluator prefers
 it over the tracked resume.
+
+## Stale board backoff
+
+Boards that keep returning "0 jobs returned" are retried on a doubling
+interval instead of a flat week: 7 days, then 14, then 28, capped at 30.
+
+Around 300 boards belong to companies that have left their ATS — their
+careers pages render zero jobs and the API agrees. A flat weekly retry
+re-fetched all of them on every sweep forever, roughly 27% of the sweep spent
+on boards that had returned nothing for months. Backing off cuts those
+fetches by about 73%.
+
+They are deliberately **not** marked dead. A dead board is skipped forever,
+and companies do pause hiring and come back, so the cap guarantees every
+board is still rechecked at least monthly.
