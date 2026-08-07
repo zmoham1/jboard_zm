@@ -292,6 +292,11 @@ MAX_JOB_AGE_DAYS = 30
 # reads — and leaves durable headroom as the board list grows.
 SOURCE_RUN_RETENTION_DAYS = 3
 
+# Most roles a single digest email may carry. Highest scores go first and the
+# remainder stays pending for the next digest, so nothing is lost — this only
+# bounds how much lands in the inbox at once.
+MAX_DIGEST_ROLES = 60
+
 _DATE_FORMATS = [
     "%Y-%m-%dT%H:%M:%S%z",
     "%Y-%m-%dT%H:%M:%SZ",
@@ -1476,6 +1481,22 @@ def run_digest(
             return
 
         log.info("Digest: %d yes + %d maybe pending.", len(notify_yes), len(notify_maybe))
+
+        # Cap how many roles a single email carries. The software track's first
+        # run sent 1,319 in one message: a brand-new database has no alert
+        # history, so its entire opening inventory counted as new. Strong
+        # matches are kept first and anything trimmed stays pending, so it
+        # leads the next digest rather than being dropped.
+        held_back = 0
+        if len(notify_yes) + len(notify_maybe) > MAX_DIGEST_ROLES:
+            keep_yes = notify_yes[:MAX_DIGEST_ROLES]
+            keep_maybe = notify_maybe[: max(0, MAX_DIGEST_ROLES - len(keep_yes))]
+            held_back = (len(notify_yes) - len(keep_yes)) + (len(notify_maybe) - len(keep_maybe))
+            notify_yes, notify_maybe = keep_yes, keep_maybe
+            log.info(
+                "Digest: capped at %d role(s); %d held for the next digest.",
+                MAX_DIGEST_ROLES, held_back,
+            )
 
         if dry_run or no_notify or not notifications_enabled:
             log.info(
