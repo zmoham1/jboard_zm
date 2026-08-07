@@ -963,6 +963,34 @@ class Database:
             ).fetchone()
         return row is not None
 
+    # A board that keeps returning nothing is retried on a doubling interval
+    # rather than being retired outright, capped here. Companies do pause
+    # hiring and come back, and a board marked dead is skipped forever, so
+    # backing off is preferable to a one-way decision.
+    MAX_EMPTY_BOARD_COOLDOWN_HOURS = 720  # 30 days
+
+    @classmethod
+    def empty_board_cooldown_hours(
+        cls,
+        fail_count: int,
+        *,
+        empty_fail_threshold: int = 3,
+        base_cooldown_hours: int = 168,
+    ) -> int:
+        """Cooldown for a board that keeps coming back empty, doubling with each failure.
+
+        A flat weekly retry meant ~300 boards belonging to companies that had
+        left the ATS were re-fetched on every sweep forever — roughly a quarter
+        of the sweep spent on boards that had returned nothing for months.
+        Doubling from the threshold backs that down to a monthly check without
+        ever permanently dropping a company that resumes hiring.
+        """
+        extra = max(0, int(fail_count) - max(empty_fail_threshold, 1))
+        # Cap the exponent before shifting so a large fail_count cannot overflow.
+        capped_extra = min(extra, 16)
+        hours = max(base_cooldown_hours, 1) * (2 ** capped_extra)
+        return min(hours, cls.MAX_EMPTY_BOARD_COOLDOWN_HOURS)
+
     def should_skip_board(
         self,
         board_id: str,
@@ -979,7 +1007,8 @@ class Database:
             return False
         if row["status"] != "degraded":
             return False
-        if int(row["fail_count"] or 0) < max(empty_fail_threshold, 1):
+        fail_count = int(row["fail_count"] or 0)
+        if fail_count < max(empty_fail_threshold, 1):
             return False
         if str(row["fail_reason"] or "").strip() != "0 jobs returned":
             return False
@@ -987,7 +1016,12 @@ class Database:
             last_checked = datetime.fromisoformat(str(row["last_checked"] or ""))
         except ValueError:
             return False
-        return (datetime.now(timezone.utc) - last_checked).total_seconds() < max(cooldown_hours, 1) * 3600
+        effective_cooldown = self.empty_board_cooldown_hours(
+            fail_count,
+            empty_fail_threshold=empty_fail_threshold,
+            base_cooldown_hours=cooldown_hours,
+        )
+        return (datetime.now(timezone.utc) - last_checked).total_seconds() < effective_cooldown * 3600
 
     def was_board_checked_recently(self, board_id: str, *, cooldown_hours: int = 6) -> bool:
         if int(cooldown_hours or 0) <= 0:
