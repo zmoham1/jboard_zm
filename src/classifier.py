@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from .software_keywords import (
     DATA_DOMAIN_EXCLUDES,
@@ -125,7 +126,7 @@ DATA_WEAK = [
     "snowflake",
     "spark",
     "databricks",
-    "warehouse",
+    "data warehouse",
     "pipeline",
     "etl",
     "elt",
@@ -327,6 +328,32 @@ class ClassifyResult:
     label: str   # "yes" | "maybe" | "no"
 
 
+@lru_cache(maxsize=4096)
+def _keyword_pattern(phrase: str) -> "re.Pattern[str]":
+    """Word-boundary matcher for a keyword phrase.
+
+    Keywords used to be matched as raw substrings, so short ones fired inside
+    unrelated words and pulled non-data jobs into the digest:
+
+        "llm" matched Fu-llm-ent  -> retail fulfillment roles
+        "etl" matched M-etl-ife   -> every MetLife posting
+        "elt" matched D-elt-a     -> every Delta Air Lines posting
+
+    Non-alphanumeric runs are treated as flexible separators so "power bi" and
+    "power-bi" both match, and a trailing plural is allowed so "Data Scientists"
+    and "AI Engineers" still match "data scientist" / "ai engineer" — strict
+    boundaries alone silently dropped every pluralised title.
+    """
+    parts = [re.escape(tok) for tok in re.split(r"[^a-z0-9#+.]+", phrase.lower()) if tok]
+    if not parts:
+        return re.compile(r"(?!)")
+    return re.compile(r"\b" + r"[^a-z0-9]+".join(parts) + r"(?:e?s)?\b")
+
+
+def _has_keyword(text: str, phrase: str) -> bool:
+    return _keyword_pattern(phrase).search(text) is not None
+
+
 def _norm(title: str) -> str:
     t = (title or "").strip().lower()
     return re.sub(r"\s+", " ", t)
@@ -402,7 +429,7 @@ def _classify_software(t: str) -> ClassifyResult:
         if phrase in t:
             return ClassifyResult(score=0, label="no")
 
-    strong = any(p in t for p in SOFTWARE_STRONG)
+    strong = any(_has_keyword(t, p) for p in SOFTWARE_STRONG)
     weak = any(re.search(rf"\b{re.escape(p)}\b", t) for p in SOFTWARE_WEAK)
     if not (strong or weak):
         return ClassifyResult(score=0, label="no")
@@ -464,8 +491,8 @@ def classify(title: str) -> ClassifyResult:
                 return ClassifyResult(score=0, label="no")
 
     # Base score from data-domain keyword match
-    strong = any(p in t for p in DATA_STRONG)
-    weak = any(p in t for p in DATA_WEAK)
+    strong = any(_has_keyword(t, p) for p in DATA_STRONG)
+    weak = any(_has_keyword(t, p) for p in DATA_WEAK)
 
     if not (strong or weak):
         return ClassifyResult(score=0, label="no")
