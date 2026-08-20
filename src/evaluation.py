@@ -611,6 +611,32 @@ def _unstated_experience_cap(text: str, years_text: str = "") -> tuple[int, str]
     )
 
 
+# The classifier caps a title carrying a mild seniority token at 65, i.e.
+# "maybe". The evaluator was free to score past that: seniority is one
+# dimension at 10% weight (45 vs 85 when flagged), a swing of about four
+# points, so a senior posting with an otherwise strong JD still cleared the
+# yes threshold. Live digests carried "Sr. Applied Scientist" at 71 and
+# "Senior Machine Learning Engineer" at 70 under STRONG MATCHES.
+#
+# This holds such roles at the top of the review band instead: still visible
+# as a stretch, never presented as a strong match. Director/VP-level titles
+# are already rejected outright by the classifier.
+SENIORITY_REVIEW_CAP = 69
+
+
+def _seniority_score_cap(text: str) -> tuple[int, str]:
+    # _find_seniority_token matches lowercase tokens with a case-sensitive
+    # regex, so a raw title like "Senior Machine Learning Engineer" would
+    # silently miss.
+    token = _find_seniority_token((text or "").lower())
+    if not token or token in VERY_SENIOR:
+        return 100, ""
+    return (
+        SENIORITY_REVIEW_CAP,
+        f"Held at review level because the title mentions {token}, above your target range.",
+    )
+
+
 def _location_block(location: str, text: str, *, require_us_location: bool) -> str:
     if not require_us_location:
         return ""
@@ -858,11 +884,13 @@ def evaluate_job(
     resume_cap, resume_cap_reason = _resume_gap_score_cap(assessment)
     onsite_cap, onsite_cap_reason = _onsite_mismatch_cap(location, text)
     unstated_cap, unstated_cap_reason = _unstated_experience_cap(text, years_text)
+    seniority_cap, seniority_cap_reason = _seniority_score_cap(title)
     remote_review_reason = _remote_scope_review_reason(location, text)
     score = min(score, evidence_cap)
     score = min(score, resume_cap)
     score = min(score, onsite_cap)
     score = min(score, unstated_cap)
+    score = min(score, seniority_cap)
     if remote_review_reason:
         score = min(score, 69)
     score = max(0, min(score, 100))
@@ -881,6 +909,8 @@ def evaluate_job(
         reasons.insert(0, onsite_cap_reason)
     if unstated_cap_reason and unstated_cap_reason not in reasons:
         reasons.insert(0, unstated_cap_reason)
+    if seniority_cap_reason and seniority_cap_reason not in reasons:
+        reasons.insert(0, seniority_cap_reason)
     if junior_bonus_reason and junior_bonus_reason not in reasons:
         reasons.insert(0, junior_bonus_reason)
     if remote_review_reason and remote_review_reason not in reasons:
