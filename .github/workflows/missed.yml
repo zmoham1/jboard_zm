@@ -1,11 +1,13 @@
 name: Job Radar — Missed Roles Audit
 
 on:
-  # Every 3rd day at 15:00 UTC (11am EDT / 10am EST) — deliberately offset from
-  # the digest hours (03/11/19 UTC) so the two never overlap. Note that a
-  # day-of-month step restarts each month, so the gap after the 31st is short.
+  # Every 3rd day at 15:05 UTC (11am EDT / 10am EST). Starts at :05 so its
+  # 15-minute budget finishes well before priority at 15:37 — both share one
+  # concurrency group, and a run left pending can be cancelled by a later
+  # arrival. Note that a day-of-month step restarts each month, so the gap
+  # after the 31st is short.
   schedule:
-    - cron: "23 15 */3 * *"
+    - cron: "5 15 */3 * *"
   workflow_dispatch:
     inputs:
       min_age_hours:
@@ -16,7 +18,6 @@ on:
 permissions:
   contents: write
 
-# Shares the digest's group so the two can never write state concurrently.
 # Every workflow that commits a shared state database uses this one group.
 # git cannot merge binary files, so two of them running at once produce an
 # unresolvable rebase conflict on the SQLite file and the run dies:

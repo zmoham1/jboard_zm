@@ -2,7 +2,11 @@ name: Job Radar — Main Sources
 
 on:
   schedule:
-    - cron: "23 12 * * *"     # Every morning at 8:00 AM ET / 12:00 UTC
+    # 13:23 UTC. 12:23 sat inside the board sweep's window (even hours at :12,
+    # running ~27 min), so this run queued behind it and was liable to be
+    # cancelled when a later run entered the shared concurrency group. 13:23
+    # finishes before priority at 13:37.
+    - cron: "23 13 * * *"
   workflow_dispatch:           # Manual trigger
 
 permissions:

@@ -2,7 +2,12 @@ name: Job Radar — Priority Companies
 
 on:
   schedule:
-    - cron: "37 */2 * * *"    # Every 2 hours, staggered behind main
+    # Odd hours, so this never coincides with the board sweep (even hours at
+    # :12, running ~27 min) or the digest (:40 on 02/10/18). All three share
+    # one concurrency group, and GitHub keeps only one pending run per group —
+    # a third arrival cancels the second. Sitting at :37 on even hours meant
+    # priority was always the pending run the digest displaced.
+    - cron: "37 1-23/2 * * *"
   workflow_dispatch:
 
 permissions:
