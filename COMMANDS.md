@@ -15,6 +15,7 @@ python -m src.main
 python -m src.main --mode boards
 python -m src.main --mode digest --digest-db state/gha-boards.db
 python -m src.main --mode missed --digest-db state/gha-boards.db
+python -m src.main --track coordinator --mode boards --no-notify
 python -m src.main --test-notify
 python -m src.main --health-check
 ```
@@ -175,6 +176,69 @@ software digest therefore does **not** use `--notify-yes-only`; that gate would
 silently suppress every alert. To raise the scores, add a software-oriented
 `data/resume/candidate_evidence.local.md` (gitignored) — the evaluator prefers
 it over the tracked resume.
+
+## Project Coordinator track
+
+A third completely separate track, for project/program coordination roles. It
+shares the board scrapers but nothing else:
+
+| | Data flow | Software track | Coordinator track |
+|---|---|---|---|
+| Database | `state/gha-jobs.db`, `state/gha-boards.db` | `state/gha-software.db` | `state/gha-coordinator.db` |
+| Workflow | `boards/priority/main` + `digest` | `software.yml` | `coordinator.yml` |
+| Schedule (UTC) | digest 02:40 / 10:40 / 18:40 | 01:25 / 09:25 / 17:25 | 05:50 / 13:50 / 21:50 |
+| Email subject | `[Job Radar Digest]` | `[Job Radar SWE]` | `[Job Radar PC]` |
+| Concurrency group | `job-radar-shared-state` | `job-radar-software` | `job-radar-coordinator` |
+
+```powershell
+python -m src.main --track coordinator --mode boards --no-notify
+python -m src.main --track coordinator --mode digest --subject-prefix "[Job Radar PC]"
+```
+
+### Why it needed its own track
+
+"coordinator" appears in **none** of the data or software keyword lists, so
+`classify()` scored every Project Coordinator posting 0 / `no`, and the title
+gate in `main.py` drops `no` titles before `mark_job_seen` ever runs. The roles
+were never stored, never scored, never emailed — and because rejected titles
+are not logged, they left no trace anywhere.
+
+### Keyword policy
+
+- **STRONG (90)** — the coordinator family proper: project/program
+  coordinator, project administrator, project analyst, PMO analyst, project
+  scheduler, operations coordinator.
+- **WEAK (55)** — a step up: project manager, program manager, scrum master,
+  implementation specialist. These usually surface as `maybe`.
+- **Entry-level markers** (`I`, `Associate`, `Junior`, `Entry Level`) add +8.
+- **Rejected outright** — clinical/trade roles that share the noun but not the
+  job (patient care, nursing, HVAC, CDL), and titles owned by the other two
+  tracks.
+
+Seniority follows the **data** track's policy, not the software one: a
+senior/lead marker caps the score at `maybe` rather than rejecting, and
+director/VP titles are rejected. Coordinator postings are junior by nature, and
+the shared experience gate in `evaluation.py` already blocks any description
+asking for more than three years, so a second hard title filter would only lose
+borderline openings worth seeing.
+
+### Track isolation
+
+The three tracks keep separate databases with **no shared dedup**, so a title
+matching two of them would be emailed twice. `tests/test_coordinator_track.py`
+asserts the keyword lists are disjoint and that every sample title scores on at
+most one track. Two candidate keywords — `business analyst` and
+`operations analyst` — were deliberately left out of `COORDINATOR_WEAK` for
+exactly this reason; both already belong to the data track.
+
+`main.py` refuses to start any non-default track against another track's
+database, so the three sets of results can never mix:
+
+```
+Refusing to run the coordinator track against state/gha-jobs.db — that database
+belongs to another track. Set DB_PATH to state/gha-coordinator.db so the other
+flows are untouched.
+```
 
 ## Stale board backoff
 

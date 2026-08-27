@@ -29,7 +29,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from .classifier import TRACK_SOFTWARE, is_match, classify, set_active_track
+from .classifier import TRACK_COORDINATOR, TRACK_SOFTWARE, is_match, classify, set_active_track
 from .company_priority import company_score_adjustment
 from .config import Config
 from .database import Database
@@ -81,6 +81,30 @@ log = logging.getLogger(__name__)
 # separate track (e.g. software) is instantly recognisable in the inbox.
 ALERT_SUBJECT_PREFIX = "[Job Radar]"
 DIGEST_SUBJECT_PREFIX = "[Job Radar Digest]"
+
+# --track value -> (classifier track, startup log line, the database it owns).
+# Only the non-default tracks appear here; "data" is the default and owns the
+# two original databases.
+TRACK_SETTINGS = {
+    "software": (
+        TRACK_SOFTWARE,
+        "Software track active — scanning early-career Software Developer roles (0-3 years).",
+        "gha-software.db",
+    ),
+    "coordinator": (
+        TRACK_COORDINATOR,
+        "Coordinator track active — scanning Project/Program Coordinator roles.",
+        "gha-coordinator.db",
+    ),
+}
+
+# Which database filenames belong to which track. Used to refuse a run that
+# would write one track's results into another track's state.
+TRACK_DB_NAMES = {
+    "data": ("gha-jobs.db", "gha-boards.db"),
+    "software": ("gha-software.db",),
+    "coordinator": ("gha-coordinator.db",),
+}
 
 
 def _auto_sync_repo_before_web(*, repo_root: str, branch: str = "main") -> None:
@@ -1795,7 +1819,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--health-check", action="store_true", help="Send a weekly health-check summary email and exit.")
     p.add_argument("--digest-db", action="append", default=[], metavar="PATH", help="Additional scanner database to include in the digest email (repeatable). Used with --mode digest so one email can cover every scanner.")
     p.add_argument("--missed-min-age-hours", type=int, default=24, help="With --mode missed: only report matches stored at least this many hours ago (default: 24), so roles the next digest will send normally are left alone.")
-    p.add_argument("--track", default="data", choices=["data", "software"], help="Which role domain to scan for (default: data). 'software' targets early-career Software Developer roles and must be pointed at its own DB_PATH so it never mixes with the data flow.")
+    p.add_argument("--track", default="data", choices=["data", "software", "coordinator"], help="Which role domain to scan for (default: data). 'software' targets early-career Software Developer roles; 'coordinator' targets Project/Program Coordinator roles. Each non-default track must be pointed at its own DB_PATH so it never mixes with the data flow.")
     p.add_argument("--subject-prefix", default="", help="Override the alert email subject prefix (e.g. '[Job Radar SWE]') so a separate track's emails are distinguishable.")
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
     p.add_argument("--web-host", default="127.0.0.1", help="Web UI host (used with --mode web).")
@@ -1837,21 +1861,24 @@ def main(argv: Optional[list[str]] = None) -> None:
     cfg = Config.load(args.config)
 
     # Select the role domain before anything scores a title. Sources import
-    # classify() directly, so this switch is what makes them software-aware.
-    if args.track == "software":
-        set_active_track(TRACK_SOFTWARE)
-        # Hard guard: the software track must never write into the data
-        # databases. Sharing one would corrupt both sets of results, since the
-        # two tracks score the same titles completely differently.
+    # classify() directly, so this switch is what makes them track-aware.
+    if args.track != "data":
+        track, description, own_db = TRACK_SETTINGS[args.track]
+        set_active_track(track)
+        # Hard guard: a track must never write into another track's database.
+        # Sharing one would corrupt both sets of results, since the tracks score
+        # the same titles completely differently — "Project Coordinator" is a
+        # 90 here and a 0 on the data track.
         db_name = os.path.basename(cfg.database.path)
-        if db_name in ("gha-jobs.db", "gha-boards.db"):
+        foreign = {name for names in TRACK_DB_NAMES.values() for name in names} - {own_db}
+        if db_name in foreign:
             log.error(
-                "Refusing to run the software track against %s — set DB_PATH to a separate "
-                "database (for example state/gha-software.db) so the data flow is untouched.",
-                cfg.database.path,
+                "Refusing to run the %s track against %s — that database belongs to another "
+                "track. Set DB_PATH to %s so the other flows are untouched.",
+                args.track, cfg.database.path, f"state/{own_db}",
             )
             sys.exit(1)
-        log.info("Software track active — scanning early-career Software Developer roles (0-3 years).")
+        log.info("%s", description)
 
     db = _open_database(cfg)
 

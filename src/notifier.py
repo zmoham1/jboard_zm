@@ -22,7 +22,8 @@ from typing import Optional
 import requests
 
 from .sources.base import Job
-from .classifier import TRACK_SOFTWARE, get_active_track
+from .classifier import TRACK_COORDINATOR, TRACK_SOFTWARE, get_active_track
+from .coordinator_keywords import COORDINATOR_TARGET_ROLES
 from .profile import PROFILE, profile_summary_html, profile_summary_text
 from .software_keywords import SOFTWARE_TARGET_ROLES
 
@@ -122,6 +123,15 @@ def _build_html(yes_jobs: list[Job], maybe_jobs: list[Job], mode: str, source_er
         headline = "Software Roles Alert (0-3 yrs)"
         footer_roles = "Software Developer · Backend · Frontend · Full Stack (0-3 yrs)"
         roles = ", ".join(SOFTWARE_TARGET_ROLES[:4])
+        profile_line = (
+            f"<p style='font-size:12px;color:#666;margin:0 0 8px'>"
+            f"Matched for <strong>{candidate_name}</strong> - "
+            f"targeting <em>{roles}...</em></p>"
+        )
+    elif get_active_track() == TRACK_COORDINATOR:
+        headline = "Project Coordinator Roles Alert"
+        footer_roles = "Project Coordinator · Program Coordinator · Project Analyst · PMO"
+        roles = ", ".join(COORDINATOR_TARGET_ROLES[:4])
         profile_line = (
             f"<p style='font-size:12px;color:#666;margin:0 0 8px'>"
             f"Matched for <strong>{candidate_name}</strong> - "
