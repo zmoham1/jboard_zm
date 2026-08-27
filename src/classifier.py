@@ -17,6 +17,13 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
+from .coordinator_keywords import (
+    COORDINATOR_EARLY_CAREER_SIGNALS,
+    COORDINATOR_HARD_EXCLUDES,
+    COORDINATOR_STRONG,
+    COORDINATOR_WEAK,
+    OTHER_TRACK_EXCLUDES,
+)
 from .software_keywords import (
     DATA_DOMAIN_EXCLUDES,
     MANAGEMENT_EXCLUDES,
@@ -370,6 +377,9 @@ def _norm(title: str) -> str:
 
 TRACK_DATA = "data"
 TRACK_SOFTWARE = "software"
+TRACK_COORDINATOR = "coordinator"
+
+ALL_TRACKS = (TRACK_DATA, TRACK_SOFTWARE, TRACK_COORDINATOR)
 
 _active_track = TRACK_DATA
 
@@ -377,7 +387,7 @@ _active_track = TRACK_DATA
 def set_active_track(track: str) -> None:
     """Select which keyword domain classify() scores against."""
     global _active_track
-    if track not in (TRACK_DATA, TRACK_SOFTWARE):
+    if track not in ALL_TRACKS:
         raise ValueError(f"Unknown track: {track!r}")
     _active_track = track
 
@@ -455,6 +465,51 @@ def _classify_software(t: str) -> ClassifyResult:
     return ClassifyResult(score=score, label=label)
 
 
+def _classify_coordinator(t: str) -> ClassifyResult:
+    """Score a title for project/program coordination relevance.
+
+    Seniority policy follows the data track rather than the software one:
+    a senior/lead marker caps the score at "maybe" instead of rejecting
+    outright, and director/VP titles are rejected. Coordinator postings are
+    junior by nature, and the shared experience gate in evaluation.py already
+    blocks any description asking for more than three years, so a second hard
+    title filter here would only lose the borderline openings worth seeing.
+    """
+    # Clinical, trade and field roles that share the noun but not the job.
+    for phrase in COORDINATOR_HARD_EXCLUDES:
+        if phrase in t:
+            return ClassifyResult(score=0, label="no")
+
+    # A posting belongs to exactly one track; these are the other two's.
+    for phrase in OTHER_TRACK_EXCLUDES:
+        if phrase in t:
+            return ClassifyResult(score=0, label="no")
+
+    strong = any(_has_keyword(t, p) for p in COORDINATOR_STRONG)
+    weak = any(_has_keyword(t, p) for p in COORDINATOR_WEAK)
+    if not (strong or weak):
+        return ClassifyResult(score=0, label="no")
+
+    score = 90 if strong else 55
+
+    # Entry-level markers are the point of this search, so they lift rather
+    # than being neutral. Word-boundary matched so "I" hits "Coordinator I"
+    # and not every word containing an i.
+    if any(re.search(rf"\b{re.escape(sig)}\b", t) for sig in COORDINATOR_EARLY_CAREER_SIGNALS):
+        score = min(100, score + 8)
+
+    score = min(score, _seniority_cap(t))
+    score = max(0, min(score, 100))
+
+    if score >= 70:
+        label = "yes"
+    elif score >= 40:
+        label = "maybe"
+    else:
+        label = "no"
+    return ClassifyResult(score=score, label=label)
+
+
 def classify(title: str) -> ClassifyResult:
     """Score and label a job title for the active track's relevance."""
     t = _norm(title)
@@ -483,6 +538,8 @@ def classify(title: str) -> ClassifyResult:
     # internship/part-time filters have already been applied.
     if _active_track == TRACK_SOFTWARE:
         return _classify_software(t)
+    if _active_track == TRACK_COORDINATOR:
+        return _classify_coordinator(t)
 
     # Hard exclude phrases — reject unless safety-net override
     if not is_safety_net:

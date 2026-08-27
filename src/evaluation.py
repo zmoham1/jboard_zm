@@ -12,11 +12,13 @@ from .classifier import (
     CLEARANCE_EXCLUDE_REGEXES,
     HARD_EXCLUDE_REGEXES,
     SENIORITY_TOKENS,
+    TRACK_COORDINATOR,
     TRACK_SOFTWARE,
     VERY_SENIOR,
     classify,
     get_active_track,
 )
+from .coordinator_keywords import COORDINATOR_TARGET_ROLES
 from .software_keywords import SOFTWARE_TARGET_ROLES
 from .config import Config
 from .profile import PROFILE, SKILLS_MODERATE, SKILLS_STRONG
@@ -399,9 +401,12 @@ def _match_skills(title: str, description: str) -> tuple[list[str], list[str], i
 
 
 def _active_target_roles() -> list[str]:
-    """Target roles for the active track (data roles unless running software)."""
-    if get_active_track() == TRACK_SOFTWARE:
+    """Target roles for the active track (data roles unless another is active)."""
+    track = get_active_track()
+    if track == TRACK_SOFTWARE:
         return list(SOFTWARE_TARGET_ROLES)
+    if track == TRACK_COORDINATOR:
+        return list(COORDINATOR_TARGET_ROLES)
     return list(PROFILE.get("target_roles", []))
 
 

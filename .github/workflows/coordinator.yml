@@ -1,0 +1,120 @@
+name: Job Radar — Project Coordinator
+
+# Fully separate track: its own database (state/gha-coordinator.db), its own
+# schedule, and its own email subject. It shares only the board scrapers, so
+# nothing here can alter the data or software flows — the scanners write to a
+# different file and main.py refuses to run this track against another
+# track's database.
+#
+# It exists because "coordinator" appears in none of the data or software
+# keyword lists, so every Project Coordinator posting scored 0 and was dropped
+# by the title gate in main.py before it was ever stored.
+
+on:
+  # Offset from every other schedule (data digest 02:40/10:40/18:40, software
+  # 01:25/09:25/17:25, audit 15:05, main 13:23). 3x/day, 8h apart —
+  # 1:50am / 9:50am / 5:50pm ET during EDT, an hour earlier under EST.
+  schedule:
+    - cron: "50 5,13,21 * * *"
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "Boards per batch (default: 50)"
+        required: false
+        default: "50"
+
+permissions:
+  contents: write
+
+# Its own group, not the shared-state one: this workflow touches no database
+# any other workflow writes, so it never needs to queue behind them.
+concurrency:
+  group: job-radar-coordinator
+  cancel-in-progress: false
+
+env:
+  DB_PATH: state/gha-coordinator.db
+
+jobs:
+  coordinator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Scan silently — matches are stored, not emailed, exactly like the data
+      # and software flows. The digest step below is what sends mail.
+      - name: Scan boards for coordinator roles
+        env:
+          BOARDS_RESCAN_COOLDOWN_HOURS: ${{ github.event_name == 'schedule' && '0' || '' }}
+        run: |
+          BATCH=${{ github.event.inputs.batch_size || '50' }}
+          python -m src.main --track coordinator --mode boards \
+            --boards-batch-size "$BATCH" \
+            --boards-run-until-wrap \
+            --no-notify
+
+      - name: Scan main sources for coordinator roles
+        run: python -m src.main --track coordinator --mode main --no-notify
+        continue-on-error: true
+
+      # One consolidated email per run, under its own subject so it never gets
+      # confused with the data or software digests. Like the software track it
+      # deliberately does NOT use --notify-yes-only: scores here are capped by
+      # resume-fit against a data-focused resume, so "yes" is hard to reach and
+      # the gate would silently suppress every alert.
+      - name: Send coordinator digest
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python -m src.main --track coordinator --mode digest \
+            --subject-prefix "[Job Radar PC]"
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          MAX_BYTES=$((95 * 1024 * 1024))
+          if [ -f state/gha-coordinator.db ]; then
+            DB_BYTES=$(wc -c < state/gha-coordinator.db)
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f state/gha-coordinator.db
+            else
+              echo "::warning file=state/gha-coordinator.db::Skipping coordinator DB commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree state/gha-coordinator.db
+            fi
+          fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update coordinator track state [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              # A binary conflict leaves the repo mid-rebase; without aborting,
+              # every later attempt fails on the same unresolved state.
+              git rebase --abort 2>/dev/null || true
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1
