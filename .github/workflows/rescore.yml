@@ -1,0 +1,127 @@
+name: Job Radar — Rescore Stored Jobs
+
+# A job's score is written once, when a scanner first stores it. mark_job_seen
+# re-scores on ON CONFLICT, so a listing still live on its board catches up the
+# next time that board is swept — but only then. A listing that has been taken
+# down, or whose board is sitting in the empty-board cooldown (up to 30 days),
+# keeps whatever the code produced on the day it was found. Because the digest
+# selects on the stored label, a role that would qualify under today's rules
+# but was stored as "no" is never emailed and nothing revisits it.
+#
+# This workflow closes that gap: it re-runs the current scoring logic over the
+# rows stamped with an older SCORING_VERSION and writes the fresh score back.
+# Rows that newly qualify simply become pending and go out with the next digest
+# through the normal path — nothing here sends email itself.
+
+on:
+  # Immediately after a change to the scoring logic lands on main.
+  push:
+    branches: [main]
+    paths:
+      - "src/classifier.py"
+      - "src/evaluation.py"
+      - "src/scoring_policy.py"
+      - "src/software_keywords.py"
+      - "src/profile.py"
+      - "src/company_priority.py"
+  # Safety net: drains any backlog a limited pass left behind, and catches a
+  # scoring change that landed without tripping the paths filter above.
+  # 05:10 UTC Sunday = 1:10am EDT, well clear of the 3x/day digests.
+  schedule:
+    - cron: "10 5 * * 0"
+  workflow_dispatch:
+    inputs:
+      rescore_all:
+        description: "Re-score every stored job, ignoring the version stamp"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Every workflow that commits a shared state database uses this one group.
+# git cannot merge binary files, so two of them running at once produce an
+# unresolvable rebase conflict on the SQLite file and the run dies.
+concurrency:
+  group: job-radar-shared-state
+  cancel-in-progress: false
+
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Rescore data-track databases
+        env:
+          RESCORE_ALL: ${{ inputs.rescore_all && '--rescore-all' || '' }}
+        run: |
+          for db in state/gha-jobs.db state/gha-boards.db; do
+            if [ ! -f "$db" ]; then
+              echo "::notice::Skipping $db — not present."
+              continue
+            fi
+            echo "=== $db (data track) ==="
+            DB_PATH="$db" python -m src.main --mode rescore --track data $RESCORE_ALL
+          done
+
+      # The software track scores the same titles completely differently, so it
+      # must be rescored under its own track against its own database.
+      - name: Rescore software-track database
+        env:
+          RESCORE_ALL: ${{ inputs.rescore_all && '--rescore-all' || '' }}
+          DB_PATH: state/gha-software.db
+        run: |
+          if [ ! -f state/gha-software.db ]; then
+            echo "::notice::Skipping state/gha-software.db — not present."
+            exit 0
+          fi
+          python -m src.main --mode rescore --track software $RESCORE_ALL
+
+      - name: Commit state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          MAX_BYTES=$((95 * 1024 * 1024))
+          for db in state/gha-jobs.db state/gha-boards.db state/gha-software.db; do
+            [ -f "$db" ] || continue
+            DB_BYTES=$(wc -c < "$db")
+            if [ "$DB_BYTES" -le "$MAX_BYTES" ]; then
+              git add -f "$db"
+            else
+              echo "::warning file=$db::Skipping commit because ${DB_BYTES} bytes exceeds the 95 MiB safety threshold."
+              git restore --worktree "$db"
+            fi
+          done
+          if git diff --cached --quiet; then
+            echo "No score changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: rescore stored jobs against current scoring logic [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              # A binary conflict leaves the repo mid-rebase; without aborting,
+              # every later attempt fails on the same unresolved state.
+              git rebase --abort 2>/dev/null || true
+              echo "Push race detected on attempt $attempt; retrying after a short pause."
+              sleep 3
+            fi
+          done
+          echo "State push failed after 3 attempts."
+          exit 1

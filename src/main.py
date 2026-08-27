@@ -27,6 +27,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 from .classifier import TRACK_SOFTWARE, is_match, classify, set_active_track
@@ -37,7 +38,7 @@ from .evaluation import evaluate_job
 from .feedback_scorer import build_feedback_adjustments
 from .job_intelligence import to_structured_json
 from .notifier import CompositeNotifier, EmailNotifier, SlackNotifier, DiscordNotifier
-from .scoring_policy import calibrate_thresholds, label_for_score, resume_fit_cap
+from .scoring_policy import SCORING_VERSION, calibrate_thresholds, label_for_score, resume_fit_cap
 from .sources.base import Job, is_us_location, remote_scope_status
 from .sources.eightfold import EightfoldSource
 from .sources.amazon import AmazonSource
@@ -377,6 +378,62 @@ def _resume_match_score(evaluation) -> int:
 
 def _relabel(score: int, thresholds) -> str:
     return label_for_score(score, yes_threshold=thresholds.yes, maybe_threshold=thresholds.maybe)
+
+
+# Sentinel returned by company_score_adjustment for an employer the user has
+# excluded outright.
+COMPANY_EXCLUDED_DELTA = -999
+
+
+def _apply_score_policy(
+    base_score: int,
+    *,
+    company: str,
+    resume_match_score: int,
+    thresholds,
+    feedback_delta: int = 0,
+) -> tuple[int, str, dict]:
+    """Turn a raw evaluation score into the score that gets stored.
+
+    Company priority boost, then the resume-fit ceiling, then any feedback
+    delta, then the ceiling again — the same order the scan path has always
+    applied. Returns (score, label, detail); detail carries the values recorded
+    in structured_json plus `boosted`/`capped` flags for run counters.
+
+    This lives in one place because two callers need identical results: the
+    scanners, which score a job when they first see it, and `--mode rescore`,
+    which recomputes stored scores after the logic changes. If the rescore
+    applied even a slightly different policy it would rewrite every row on
+    every pass and churn the digest.
+    """
+    detail: dict = {}
+    company_delta, company_reason = company_score_adjustment(company)
+    detail["company_priority_delta"] = company_delta
+    detail["company_priority_reason"] = company_reason
+    detail["excluded"] = company_delta == COMPANY_EXCLUDED_DELTA
+    if detail["excluded"]:
+        return 0, "no", detail
+
+    score = int(base_score)
+    detail["boosted"] = company_delta > 0
+    if company_delta > 0:
+        score = min(100, score + company_delta)
+
+    resume_cap, resume_cap_reason = resume_fit_cap(resume_match_score)
+    detail["resume_match_score"] = resume_match_score
+    detail["resume_match_cap"] = resume_cap
+    detail["resume_match_cap_reason"] = resume_cap_reason
+    detail["capped"] = score > resume_cap
+    score = min(score, resume_cap)
+
+    detail["feedback_score_delta"] = feedback_delta
+    if feedback_delta:
+        score = max(0, min(100, score + feedback_delta))
+        score = min(score, resume_cap)
+
+    detail["label_threshold_yes"] = thresholds.yes
+    detail["label_threshold_maybe"] = thresholds.maybe
+    return score, _relabel(score, thresholds), detail
 
 
 # ---------------------------------------------------------------------------
@@ -1129,26 +1186,22 @@ def _dispatch_results(
         merged_structured = dict(intelligence.get("structured") or {})
         merged_structured.update(_load_structured_json(getattr(j, "structured_json", "")))
         resume_match_score = _resume_match_score(evaluation)
-        company_delta, company_reason = company_score_adjustment(j.company)
-        if company_delta == -999:
+        j.score, j.label, policy = _apply_score_policy(
+            j.score,
+            company=j.company,
+            resume_match_score=resume_match_score,
+            thresholds=thresholds,
+        )
+        if policy["excluded"]:
             company_excluded += 1
             continue
-        if company_delta > 0:
+        if policy["boosted"]:
             company_boosted += 1
-            j.score = min(100, j.score + company_delta)
-            j.label = _relabel(j.score, thresholds)
-        resume_cap, resume_cap_reason = resume_fit_cap(resume_match_score)
-        if j.score > resume_cap:
+        if policy["capped"]:
             resume_capped += 1
-            j.score = resume_cap
-            j.label = _relabel(j.score, thresholds)
-        merged_structured["resume_match_score"] = resume_match_score
-        merged_structured["resume_match_cap"] = resume_cap
-        merged_structured["resume_match_cap_reason"] = resume_cap_reason
-        merged_structured["company_priority_delta"] = company_delta
-        merged_structured["company_priority_reason"] = company_reason
-        merged_structured["label_threshold_yes"] = thresholds.yes
-        merged_structured["label_threshold_maybe"] = thresholds.maybe
+        merged_structured.update(
+            {k: v for k, v in policy.items() if k not in ("excluded", "boosted", "capped")}
+        )
         j.structured_json = to_structured_json(merged_structured)
         j.is_repost = intelligence["is_repost"]
         j.repost_of_key = intelligence["repost_of_key"]
@@ -1580,9 +1633,154 @@ def run_missed_audit(
     )
 
 
+def run_rescore(
+    cfg: Config,
+    db: Database,
+    *,
+    dry_run: bool = False,
+    limit: int = 0,
+    rescore_all: bool = False,
+) -> dict:
+    """Recompute stored scores that predate the current scoring logic.
+
+    A job's score is written once, when a scanner first stores it. mark_job_seen
+    re-scores on ON CONFLICT, so a listing that is still live on its board
+    catches up by itself the next time that board is swept — but only then. A
+    listing that has been taken down, or whose board is sitting in the
+    empty-board cooldown (up to 30 days), keeps whatever the code produced on
+    the day it was found. Because the digest selects on the stored label, a role
+    that would qualify under today's rules but was stored as "no" is never
+    emailed, and nothing in the pipeline ever revisits it.
+
+    This walks the rows stamped with an older SCORING_VERSION, re-runs the full
+    scoring pipeline against the stored description, and writes the result back.
+    alerted_at is left untouched, so a row that flips no -> yes/maybe simply
+    becomes pending and the next digest picks it up through the normal path;
+    a row that flips the other way is corrected without un-sending anything.
+
+    Returns a summary dict for logging and tests.
+    """
+    version = SCORING_VERSION
+    target_version = version
+    if rescore_all:
+        # version + 1 sweeps in the rows already stamped at the current version.
+        log.info("Rescore: --rescore-all given; re-scoring every stored job regardless of version stamp.")
+        selector = version + 1
+    else:
+        selector = version
+    pending = db.count_jobs_needing_rescore(selector)
+    rows = db.get_jobs_for_rescore(selector, limit=limit)
+
+    summary = {
+        "scanned": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "errors": 0,
+        "newly_pending": 0,
+        "backlog_before": pending,
+        "transitions": Counter(),
+    }
+    if not rows:
+        log.info("Rescore: every stored job is already at scoring version %d — nothing to do.", version)
+        return summary
+
+    log.info(
+        "Rescore: %d job(s) below scoring version %d (%d in this pass%s).",
+        pending, version, len(rows), " — dry run" if dry_run else "",
+    )
+
+    feedback_rows = db.get_feedback_jobs()
+    thresholds = calibrate_thresholds(feedback_rows)
+
+    # build_feedback_adjustments only needs key/company/source/title.
+    stubs = [SimpleNamespace(
+        key=r["key"], company=r["company"] or "", source=r["source"] or "", title=r["title"] or "",
+    ) for r in rows]
+    adjustments = build_feedback_adjustments(stubs, feedback_rows)
+
+    unchanged_keys: list[str] = []
+    for row in rows:
+        summary["scanned"] += 1
+        try:
+            evaluation = evaluate_job(
+                row["title"] or "",
+                row["description"] or "",
+                company=row["company"] or "",
+                location=row["location"] or "",
+                source=row["source"] or "",
+                require_us_location=cfg.filter.require_us_location,
+                yes_threshold=thresholds.yes,
+                maybe_threshold=thresholds.maybe,
+            )
+        except Exception as exc:
+            # A row that cannot be scored must still be stamped, or it would be
+            # retried forever and block the backlog from ever draining.
+            summary["errors"] += 1
+            log.warning("Rescore: could not score %s — %s", row["key"], exc)
+            unchanged_keys.append(row["key"])
+            continue
+
+        adjustment = adjustments.get(row["key"])
+        score, label, _policy = _apply_score_policy(
+            evaluation.score,
+            company=row["company"] or "",
+            resume_match_score=_resume_match_score(evaluation),
+            thresholds=thresholds,
+            feedback_delta=adjustment.delta if adjustment else 0,
+        )
+
+        old_label = row["label"] or ""
+        old_score = int(row["score"] or 0)
+        if score == old_score and label == old_label:
+            unchanged_keys.append(row["key"])
+            summary["unchanged"] += 1
+            continue
+
+        if label != old_label:
+            summary["transitions"][f"{old_label or '?'}->{label}"] += 1
+            # A row rescued from "no" has alerted_at='' already, so leaving that
+            # column alone is exactly what makes it show up in the next digest.
+            if old_label == "no" and label in ("yes", "maybe") and not (row["alerted_at"] or ""):
+                summary["newly_pending"] += 1
+                log.info(
+                    "Rescore: %s — %s now qualifies (%s:%d -> %s:%d); queued for the next digest.",
+                    row["company"], row["title"], old_label or "?", old_score, label, score,
+                )
+
+        summary["updated"] += 1
+        if dry_run:
+            continue
+        db.update_job_scoring(
+            row["key"],
+            score=score,
+            label=label,
+            grade=evaluation.grade,
+            evaluation_json=evaluation.to_json(),
+            fit_summary=evaluation.fit_summary,
+            version=target_version,
+        )
+
+    if not dry_run and unchanged_keys:
+        db.mark_scoring_version(unchanged_keys, target_version)
+
+    log.info(
+        "Rescore: scanned %d, updated %d, unchanged %d, errors %d, newly eligible %d. Transitions: %s",
+        summary["scanned"], summary["updated"], summary["unchanged"],
+        summary["errors"], summary["newly_pending"],
+        dict(summary["transitions"]) or "none",
+    )
+    remaining = max(0, pending - summary["scanned"]) if not dry_run else pending
+    if remaining:
+        log.info("Rescore: %d job(s) still below version %d; the next pass will continue.", remaining, version)
+    return summary
+
+
 def _collect_delivery_stats(db: Database, extra_db_paths: Optional[list[str]]) -> dict:
     """Aggregate alert-delivery health across every scanner database."""
-    totals = {"pending": 0, "alerted_24h": 0, "alerted_7d": 0, "oldest_pending": "", "last_alert": ""}
+    totals = {
+        "pending": 0, "alerted_24h": 0, "alerted_7d": 0,
+        "oldest_pending": "", "last_alert": "", "scoring_backlog": 0,
+    }
     opened: list[tuple[Database, bool]] = [(db, False)]
     for raw_path in extra_db_paths or []:
         path = (raw_path or "").strip()
@@ -1610,6 +1808,13 @@ def _collect_delivery_stats(db: Database, extra_db_paths: Optional[list[str]]) -
                 totals["oldest_pending"] = s["oldest_pending"]
             if s["last_alert"] > totals["last_alert"]:
                 totals["last_alert"] = s["last_alert"]
+            # Jobs still carrying a score from an older revision of the logic.
+            # A standing backlog means the rescore workflow is not keeping up,
+            # and roles that now qualify are sitting invisible to the digest.
+            try:
+                totals["scoring_backlog"] += source_db.count_jobs_needing_rescore(SCORING_VERSION)
+            except Exception as exc:
+                log.error("Health check: failed reading scoring backlog from %s — %s", source_db.path, exc)
     finally:
         for source_db, owned in opened:
             if owned:
@@ -1665,6 +1870,14 @@ def run_health_check(
                 )
         except ValueError:
             pass
+    # The rescore workflow runs on every scoring change plus weekly, and drains
+    # in passes. A backlog that survives a full week means it is not running.
+    scoring_backlog = delivery.get("scoring_backlog", 0)
+    if scoring_backlog:
+        delivery_warnings.append(
+            f"{scoring_backlog} stored job(s) still scored by older logic — "
+            "run the rescore workflow, or roles that now qualify stay invisible to the digest."
+        )
 
     subject = (
         f"[Job Radar] Weekly Health Check — {len(delivery_warnings)} delivery issue(s) — {ts}"
@@ -1727,6 +1940,7 @@ def run_health_check(
     <div class="stat"><span>Found but not yet emailed</span><span class="stat-val">{delivery['pending']}</span></div>
     <div class="stat"><span>Last alert email sent</span><span class="stat-val">{last_alert_display}</span></div>
     <div class="stat"><span>Oldest waiting match</span><span class="stat-val">{oldest_pending_display}</span></div>
+    <div class="stat"><span>Awaiting rescore</span><span class="stat-val">{scoring_backlog}</span></div>
   </div>
   <div class="footer">Powered by Job Radar — targeting Data Analyst · Data Scientist · Data Engineer</div>
 </div></body></html>"""
@@ -1748,6 +1962,7 @@ def run_health_check(
         f"Not yet emailed     : {delivery['pending']}\n"
         f"Last alert sent     : {last_alert_display}\n"
         f"Oldest waiting      : {oldest_pending_display}\n"
+        f"Awaiting rescore    : {scoring_backlog}\n"
     )
 
     from email.mime.multipart import MIMEMultipart
@@ -1787,7 +2002,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Job Radar — aggregate and alert on new engineering jobs.",
     )
     p.add_argument("--config", default="config.yaml", help="Path to YAML config file (default: config.yaml)")
-    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "missed", "web"], help="Run mode (default: main)")
+    p.add_argument("--mode", default="main", choices=["main", "boards", "priority", "digest", "missed", "rescore", "web"], help="Run mode (default: main)")
     p.add_argument("--dry-run", action="store_true", help="Fetch jobs but do not save state or send notifications.")
     p.add_argument("--no-notify", action="store_true", help="Save state but skip all notifications.")
     p.add_argument("--notify-yes-only", action="store_true", help="Send notifications only when there is at least one YES match; include MAYBE matches only alongside YES alerts.")
@@ -1795,6 +2010,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--health-check", action="store_true", help="Send a weekly health-check summary email and exit.")
     p.add_argument("--digest-db", action="append", default=[], metavar="PATH", help="Additional scanner database to include in the digest email (repeatable). Used with --mode digest so one email can cover every scanner.")
     p.add_argument("--missed-min-age-hours", type=int, default=24, help="With --mode missed: only report matches stored at least this many hours ago (default: 24), so roles the next digest will send normally are left alone.")
+    p.add_argument("--rescore-limit", type=int, default=1500, help="With --mode rescore: maximum jobs to re-score in one pass (default: 1500, 0 = no limit). The version stamp is persisted, so successive runs drain the backlog.")
+    p.add_argument("--rescore-all", action="store_true", help="With --mode rescore: re-score every stored job, not just those below the current scoring version.")
     p.add_argument("--track", default="data", choices=["data", "software"], help="Which role domain to scan for (default: data). 'software' targets early-career Software Developer roles and must be pointed at its own DB_PATH so it never mixes with the data flow.")
     p.add_argument("--subject-prefix", default="", help="Override the alert email subject prefix (e.g. '[Job Radar SWE]') so a separate track's emails are distinguishable.")
     p.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
@@ -1913,6 +2130,14 @@ def main(argv: Optional[list[str]] = None) -> None:
                 no_notify=args.no_notify,
                 extra_db_paths=args.digest_db,
                 min_age_hours=args.missed_min_age_hours,
+            )
+        elif args.mode == "rescore":
+            run_rescore(
+                cfg=cfg,
+                db=db,
+                dry_run=args.dry_run,
+                limit=args.rescore_limit,
+                rescore_all=args.rescore_all,
             )
         elif args.mode == "priority":
             try:

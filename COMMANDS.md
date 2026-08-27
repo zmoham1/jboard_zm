@@ -15,6 +15,7 @@ python -m src.main
 python -m src.main --mode boards
 python -m src.main --mode digest --digest-db state/gha-boards.db
 python -m src.main --mode missed --digest-db state/gha-boards.db
+python -m src.main --mode rescore
 python -m src.main --test-notify
 python -m src.main --health-check
 ```
@@ -62,6 +63,50 @@ The audit deliberately does **not** apply the yes-only gate, and only reports
 matches older than `--missed-min-age-hours` (default 24) so roles the next
 digest will deliver normally are left alone. Reported roles are stamped, so
 nothing is reported twice.
+
+## Rescoring stored jobs
+
+A job's score is written **once**, when a scanner first stores it.
+`mark_job_seen` re-scores on `ON CONFLICT`, so a listing that is still live on
+its board catches up the next time that board is swept — but only then. A
+listing that has been taken down, or whose board is sitting in the empty-board
+cooldown (up to 30 days), keeps whatever score the code produced on the day it
+was found.
+
+That matters because the digest selects on the **stored label**. A role that
+would qualify under today's rules but was stored as `no` is invisible to it
+forever, and nothing in the pipeline ever revisits the row.
+
+Every stored job carries a `scoring_version`. `--mode rescore` walks the rows
+below `SCORING_VERSION`, re-runs the current scoring pipeline against the
+stored description, and writes the fresh score back:
+
+```powershell
+python -m src.main --mode rescore                      # drain the backlog (1500/pass)
+python -m src.main --mode rescore --dry-run            # report only, write nothing
+python -m src.main --mode rescore --rescore-all        # ignore the version stamp
+python -m src.main --track software --mode rescore     # software DB, software rules
+```
+
+`alerted_at` is deliberately left alone. A row that flips `no` → `yes`/`maybe`
+simply becomes pending and goes out with the next digest through the normal
+path; a row that flips the other way is corrected without un-sending anything.
+A job that cannot be scored is still stamped, so one bad row cannot block the
+backlog from draining.
+
+**When you change scoring logic, bump `SCORING_VERSION` in
+`src/scoring_policy.py`** — new or reworded keywords, a changed cap or
+threshold, a new exclusion rule. Leave it alone for changes that cannot move a
+score. Nothing else marks stored rows as out of date.
+
+`rescore.yml` runs on every push to `main` that touches a scoring file, weekly
+on Sunday 05:10 UTC as a safety net, and on demand via `workflow_dispatch`
+(with a `rescore_all` toggle). It covers all three databases — both data DBs on
+the data track, `gha-software.db` on the software track — and joins the shared
+`job-radar-shared-state` concurrency group. It never sends email itself.
+
+The weekly health check reports the backlog as **Awaiting rescore** and raises
+a delivery warning when it is non-zero.
 
 ## Operating model
 

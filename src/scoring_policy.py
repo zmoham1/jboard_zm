@@ -7,6 +7,25 @@ DEFAULT_YES_THRESHOLD = 70
 DEFAULT_MAYBE_THRESHOLD = 40
 MIN_THRESHOLD_FEEDBACK_ROWS = 8
 
+# Revision counter for the scoring logic — the classifier, the evaluation
+# dimensions, the keyword lists and the thresholds above, taken together.
+#
+# A job's score is written once, when it is stored. mark_job_seen re-scores on
+# ON CONFLICT, so a listing still live on its board catches up by itself; a
+# listing that has been taken down, or whose board is sitting in the
+# empty-board cooldown, keeps whatever score the code produced on the day it
+# was found. That is how a role can qualify under today's rules and still
+# never be emailed, because the digest selects on the stored label.
+#
+# Every stored job carries the version that scored it. `--mode rescore` walks
+# the rows below the current version, re-runs evaluate_job against the stored
+# description, and writes the fresh score back.
+#
+# BUMP THIS whenever a change alters what an existing job would score: new or
+# reworded keywords, a changed cap or threshold, a new exclusion rule. Leave it
+# alone for changes that cannot move a score (logging, refactors, docs).
+SCORING_VERSION = 1
+
 PREFERENCE_ACTIONS = frozenset({"interested", "applied", "dismissed", "archived", "shortlisted"})
 OUTCOME_POSITIVE_ACTIONS = frozenset({"responded", "interview", "onsite", "offer"})
 OUTCOME_NEGATIVE_ACTIONS = frozenset({"screen_reject", "rejected", "ghosted"})

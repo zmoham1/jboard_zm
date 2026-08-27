@@ -31,6 +31,7 @@ from .job_intelligence import (
     score_employer_quality,
     to_structured_json,
 )
+from .scoring_policy import SCORING_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -324,7 +325,13 @@ class Database:
             # historical backlog. Only jobs stored *after* this migration stay
             # pending (alerted_at='').
             self._conn.execute("UPDATE jobs SET alerted_at=last_seen WHERE alerted_at=''")
+        if "scoring_version" not in job_columns:
+            # Which revision of the scoring logic produced the stored
+            # score/label. Existing rows default to 0, which is below every
+            # real SCORING_VERSION, so the first rescore pass picks them all up.
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN scoring_version INTEGER NOT NULL DEFAULT 0")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_grade ON jobs(grade)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_scoring_version ON jobs(scoring_version)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_pipeline_status ON jobs(pipeline_status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_canonical_key ON jobs(canonical_key)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_is_repost ON jobs(is_repost)")
@@ -413,6 +420,84 @@ class Database:
                     (stamp, k),
                 )
 
+    def count_jobs_needing_rescore(self, version: int) -> int:
+        """How many stored jobs were scored by an older revision of the logic."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE scoring_version < ?", (int(version),)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def get_jobs_for_rescore(self, version: int, *, limit: int = 0) -> list[dict]:
+        """Return stored jobs whose score predates the current scoring logic.
+
+        A job's score is frozen at the moment it was stored. mark_job_seen
+        re-scores on ON CONFLICT, so a listing that is still live on its board
+        eventually catches up on its own — but only then. A listing that has
+        been taken down, or whose board is in the empty-board cooldown, keeps
+        an obsolete score forever, and a job that should now qualify is never
+        emailed because the digest selects on label.
+
+        Newest first, so a limited pass corrects the most relevant rows before
+        working back through the archive.
+        """
+        sql = (
+            "SELECT key, source, company, title, location, url, score, label, "
+            "       alerted_at, scoring_version, description "
+            "FROM jobs WHERE scoring_version < ? "
+            "ORDER BY last_seen DESC"
+        )
+        params: list[object] = [int(version)]
+        if limit and limit > 0:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        rows = self._conn.execute(sql, tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_job_scoring(
+        self,
+        key: str,
+        *,
+        score: int,
+        label: str,
+        grade: str,
+        evaluation_json: str,
+        fit_summary: str,
+        version: int,
+    ) -> None:
+        """Replace a stored job's score with a freshly computed one.
+
+        Only the scoring columns and the version stamp are touched. first_seen,
+        last_seen and alerted_at are deliberately left alone: a rescore is not
+        a sighting, and rewriting alerted_at would either re-send roles that
+        were already emailed or silently swallow ones that were not.
+        """
+        with self._tx() as conn:
+            conn.execute(
+                """
+                UPDATE jobs
+                   SET score=?, label=?, grade=?,
+                       evaluation_json=CASE WHEN ? <> '' THEN ? ELSE evaluation_json END,
+                       fit_summary=CASE WHEN ? <> '' THEN ? ELSE fit_summary END,
+                       scoring_version=?
+                 WHERE key=?
+                """,
+                (
+                    int(score), label, grade,
+                    evaluation_json, evaluation_json,
+                    fit_summary, fit_summary,
+                    int(version), key,
+                ),
+            )
+
+    def mark_scoring_version(self, keys: list[str], version: int) -> None:
+        """Stamp jobs as scored by the current logic without changing anything else."""
+        keys = [k for k in keys if k]
+        if not keys:
+            return
+        with self._tx() as conn:
+            for k in keys:
+                conn.execute("UPDATE jobs SET scoring_version=? WHERE key=?", (int(version), k))
+
     def mark_job_seen(
         self,
         *,
@@ -461,10 +546,11 @@ class Database:
             conn.execute(
                 """
                 INSERT INTO jobs(
-                    key,source,company,title,location,url,posted,score,label,grade,evaluation_json,description,manual_input,fit_summary,canonical_key,structured_json,is_repost,repost_of_key,employer_quality_score,employer_quality_reason,pipeline_status,pipeline_notes,follow_up_date,pipeline_updated_at,first_seen,last_seen
+                    key,source,company,title,location,url,posted,score,label,grade,evaluation_json,description,manual_input,fit_summary,canonical_key,structured_json,is_repost,repost_of_key,employer_quality_score,employer_quality_reason,pipeline_status,pipeline_notes,follow_up_date,pipeline_updated_at,first_seen,last_seen,scoring_version
                 )
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(key) DO UPDATE SET
+                    scoring_version=excluded.scoring_version,
                     title=excluded.title,
                     location=excluded.location,
                     url=excluded.url,
@@ -531,7 +617,7 @@ class Database:
                     key, source, company, title, location, url, posted, score, label,
                     grade, evaluation_json, description, 1 if manual_input else 0, fit_summary,
                     canonical, structured, 1 if repost_flag else 0, repost_key, quality_score, quality_reason,
-                    pipeline_status, pipeline_notes, follow_up_date, now, now, now,
+                    pipeline_status, pipeline_notes, follow_up_date, now, now, now, SCORING_VERSION,
                 ),
             )
 
