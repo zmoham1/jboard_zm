@@ -46,13 +46,24 @@ COORDINATOR_STRONG = [
     "project controls specialist",
     "project scheduler",
     "project planner",
-    "planning coordinator",
-    "scheduling coordinator",
-    "resource coordinator",
-    "implementation coordinator",
-    "operations coordinator",
-    "business operations coordinator",
+    "project planning coordinator",
+    "project implementation coordinator",
+    "project operations coordinator",
 ]
+
+# Deliberately NOT included: the bare "operations coordinator",
+# "scheduling coordinator", "resource coordinator", "planning coordinator".
+#
+# Each is a generic office noun rather than a project-coordination title, and
+# the first live sweep showed what they actually catch: Legal Operations
+# Coordinator/Paralegal (which scored 71 and was presented as a STRONG match),
+# Talent Operations, People Operations, Advertising Operations, Fuel Desk
+# Operations, Photo Editor & Operations Coordinator, and a hospital's Referral
+# and Scheduling Coordinator. None are project coordination.
+#
+# The qualified forms above still match when the word "project" is present,
+# which is the signal that distinguishes the real thing from an admin role
+# that happens to share a noun.
 
 # Adjacent titles that are a step up from coordinator. These score lower and
 # generally surface as "maybe" — the shared experience gate in evaluation.py
@@ -64,16 +75,29 @@ COORDINATOR_STRONG = [
 # separate databases with no shared dedup, so a single posting matching both
 # would arrive twice — one copy in the data digest and one here.
 COORDINATOR_WEAK = [
-    "project manager",
-    "program manager",
     "associate project manager",
     "assistant project manager",
     "junior project manager",
+    "associate program manager",
     "project lead",
     "implementation specialist",
     "scrum master",
     "agile coordinator",
 ]
+
+# Deliberately NOT included: the bare "project manager" and "program manager".
+#
+# The first live sweep showed why. "program manager" matched every
+# "Technical Program Manager, <Team>" posting, and one company alone took 22 of
+# the 60 slots in the digest — Compute, Silicon, Security, Databases, API
+# Platform and so on. A TPM is a senior engineering role, typically 5-8 years;
+# it is not a coordinator job. The same keyword pulled in Senior TPM listings
+# at four other companies and crowded genuine coordinator roles out of the
+# capped digest. Only 8 of the 60 roles in that email were real Project
+# Coordinator postings.
+#
+# The explicitly junior variants above are kept: "Associate Project Manager"
+# is a real entry-level title and cannot match a bare "Program Manager".
 
 # Coordination work in domains that are a different profession entirely.
 # These are not "office project coordination with a different adjective" —
