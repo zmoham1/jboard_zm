@@ -207,13 +207,40 @@ are not logged, they left no trace anywhere.
 
 - **STRONG (90)** — the coordinator family proper: project/program
   coordinator, project administrator, project analyst, PMO analyst, project
-  scheduler, operations coordinator.
-- **WEAK (55)** — a step up: project manager, program manager, scrum master,
-  implementation specialist. These usually surface as `maybe`.
+  scheduler.
+- **WEAK (55)** — explicitly junior neighbours: associate/assistant/junior
+  project manager, project lead, scrum master, implementation specialist.
+  These usually surface as `maybe`.
 - **Entry-level markers** (`I`, `Associate`, `Junior`, `Entry Level`) add +8.
 - **Rejected outright** — clinical/trade roles that share the noun but not the
   job (patient care, nursing, HVAC, CDL), and titles owned by the other two
   tracks.
+
+### Tuned after the first live sweep
+
+The first real run showed the initial lists were far too loose. Of 60 roles in
+that digest, **8 were genuine Project Coordinator postings**:
+
+- the bare **`program manager` / `project manager`** matched every
+  "Technical Program Manager, ‹Team›" posting. One company took **22 of the 60
+  slots**; four others contributed Senior TPM listings. A TPM is a senior
+  engineering role, typically 5-8 years.
+- the bare **`operations coordinator` / `scheduling coordinator` /
+  `resource coordinator` / `planning coordinator`** are generic office nouns.
+  They caught Legal Operations Coordinator/Paralegal (scored 71, shown as a
+  STRONG match), Talent/People/Advertising Operations, and a hospital's
+  Referral and Scheduling Coordinator.
+
+Both groups were removed. The explicitly junior manager titles
+(`associate project manager` and friends) and the qualified project forms
+(`project operations coordinator`) are kept, since the word "project" is what
+separates the real thing from an admin role sharing a noun. Across the 250
+roles sitting in the pending queue at the time, **235 (94%) stopped matching**.
+
+Because keyword changes do not rescore already-stored jobs, those 235 rows had
+to be corrected in `state/gha-coordinator.db` by hand so the next digest would
+not send them. The `--mode rescore` work makes that automatic — see the
+rescore branch.
 
 Seniority follows the **data** track's policy, not the software one: a
 senior/lead marker caps the score at `maybe` rather than rejecting, and

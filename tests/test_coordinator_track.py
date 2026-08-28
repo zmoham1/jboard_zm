@@ -59,7 +59,7 @@ class ClassifierTests(unittest.TestCase):
     def test_matches_the_coordinator_family(self) -> None:
         set_active_track(TRACK_COORDINATOR)
         for title in ("Project Coordinator", "Program Coordinator", "Project Administrator",
-                      "PMO Analyst", "Project Scheduler", "Operations Coordinator"):
+                      "PMO Analyst", "Project Scheduler", "Project Operations Coordinator"):
             self.assertEqual(classify(title).label, "yes", title)
 
     def test_plural_and_separator_variants_still_match(self) -> None:
@@ -86,12 +86,40 @@ class ClassifierTests(unittest.TestCase):
         for title in ("Director of Project Management", "VP, Program Management"):
             self.assertEqual(classify(title).label, "no", title)
 
-    def test_project_manager_is_weaker_than_coordinator(self) -> None:
+    def test_program_manager_titles_are_rejected(self) -> None:
+        """The first live sweep put 22 Technical Program Manager postings from
+        one company into a 60-role digest, crowding out real coordinators.
+        A TPM is a senior engineering role, not a coordination job."""
         set_active_track(TRACK_COORDINATOR)
-        self.assertGreater(
-            classify("Project Coordinator").score,
-            classify("Project Manager").score,
-        )
+        for title in ("Technical Program Manager, Compute", "Senior Technical Program Manager",
+                      "Program Manager, Compliance", "Product Program Manager",
+                      "Project Manager", "Senior Professional Services Project Manager",
+                      "Legal Program Manager"):
+            self.assertEqual(classify(title).label, "no", title)
+
+    def test_explicitly_junior_manager_titles_still_match(self) -> None:
+        """Cutting the bare noun must not take the real entry-level titles."""
+        set_active_track(TRACK_COORDINATOR)
+        for title in ("Associate Project Manager", "Assistant Project Manager",
+                      "Junior Project Manager", "Associate Program Manager"):
+            self.assertEqual(classify(title).label, "maybe", title)
+
+    def test_generic_operations_coordinators_are_rejected(self) -> None:
+        """Generic office nouns caught paralegal, HR, ad-ops and hospital
+        scheduling roles — one scored 71 and was shown as a STRONG match."""
+        set_active_track(TRACK_COORDINATOR)
+        for title in ("Legal Operations Coordinator", "Talent Operations Coordinator",
+                      "People Operations Coordinator", "Advertising Operations Coordinator",
+                      "Referral and Scheduling Coordinator", "Resource Coordinator"):
+            self.assertEqual(classify(title).label, "no", title)
+
+    def test_qualified_project_forms_still_match(self) -> None:
+        """The word "project" is the signal that separates the real thing from
+        an admin role sharing a noun."""
+        set_active_track(TRACK_COORDINATOR)
+        for title in ("Project Operations Coordinator", "Project Planning Coordinator",
+                      "Project Implementation Coordinator"):
+            self.assertEqual(classify(title).label, "yes", title)
 
     def test_same_noun_different_profession_is_rejected(self) -> None:
         """Clinical and trade roles share the word but not the job."""
