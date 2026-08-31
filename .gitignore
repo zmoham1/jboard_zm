@@ -6,8 +6,10 @@ __pycache__/
 venv/
 config.yaml
 src/profile_local.py
-data/resume/base_resume.local.md
-data/resume/RESUME_TEMPLATE.local.tex
+# Every local resume override, not just the two that existed first.
+# evaluation.py also reads candidate_evidence.local.md, which the explicit
+# list missed — a glob keeps future .local files out of the repo by default.
+data/resume/*.local.*
 
 # Local workstation state
 state/*.db
