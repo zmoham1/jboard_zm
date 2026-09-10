@@ -20,30 +20,60 @@ python -m src.main --test-notify
 python -m src.main --health-check
 ```
 
-## Alert cadence (digest model)
+## Alert cadence (immediate YES, digested MAYBE)
 
-Scans run every 2 hours and **store** matches without emailing (`--no-notify`).
-Emails are batched: the `digest` mode collects every stored-but-not-yet-alerted
-YES/MAYBE job across **all** scanner databases, sends a single consolidated
-email, and stamps them so they are never re-sent.
+YES matches are emailed by the scan that finds them. `boards.yml` and
+`priority.yml` run with `--notify-yes-only` and no `--no-notify`, so a strong
+match goes out on the sweep rather than waiting for a digest window.
 
-The `digest.yml` workflow runs this 3x/day (every 8 hours) as one job covering
-both databases (`state/gha-jobs.db` primary, `state/gha-boards.db` via
-`--digest-db`), so the hard cap is **one email per run — max 3 emails per day**.
-A role found by both scanners is emailed once and stamped in both databases.
+MAYBE matches are still stored and batched. `digest.yml` collects every
+stored-but-not-yet-alerted job across **all** scanner databases
+(`state/gha-jobs.db` primary, `state/gha-boards.db` via `--digest-db`), sends
+one consolidated email, and stamps them so they are never re-sent. A role found
+by both scanners is emailed once and stamped in both databases.
 
-Send times are anchored to US Eastern via `cron: "0 3,11,19 * * *"` (cron is
-always UTC):
+### Why it stopped being digest-only
 
-| UTC | EDT (Mar–Nov) | EST (Nov–Mar) |
+Under the old model every match waited for the next digest. Measured end to
+end, a newly posted role took about 6.5 hours to reach the inbox and up to 17
+in the worst case:
+
+| Stage | Delay |
+|-------|-------|
+| Waiting for the next board sweep | ~2.5h typical, ~7h worst |
+| Parked as pending by `--no-notify` | ~4h typical, ~10h worst |
+
+The second row was pure batching and is now gone for YES matches. Expect
+roughly 8-12 emails a day instead of 3.
+
+### Digest send times
+
+`cron: "40 2,10,18 * * *"` (cron is always UTC):
+
+| UTC | EDT (Mar-Nov) | EST (Nov-Mar) |
 |-----|---------------|---------------|
-| 03:00 | 11:00 PM (prev day) | 10:00 PM (prev day) |
-| 11:00 | 7:00 AM | 6:00 AM |
-| 19:00 | 3:00 PM | 2:00 PM |
+| 02:40 | 10:40 PM (prev day) | 9:40 PM (prev day) |
+| 10:40 | 6:40 AM | 5:40 AM |
+| 18:40 | 2:40 PM | 1:40 PM |
 
 GitHub cron does not follow daylight saving, so the wall-clock times shift by
-an hour twice a year. The 8-hour spacing is unaffected. To keep the EDT times
-year-round, change the hours to `4,12,20` when EST begins.
+an hour twice a year. The 8-hour spacing is unaffected.
+
+### GitHub drops scheduled runs
+
+`schedule:` is best-effort. `boards.yml` asks for every 2 hours; over a
+measured 25-hour window it actually ran 6 times, averaging a 5-hour gap. That
+remaining latency is not fixable in this repo. To remove it, trigger the
+workflow externally via `workflow_dispatch`, which fires within seconds:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/zmoham1/jboard_zm/actions/workflows/boards.yml/dispatches \
+  -d '{"ref":"main"}'
+```
+
+Point any external scheduler at that and keep the cron as a fallback.
 
 ## Missed-roles audit (safety net)
 

@@ -49,7 +49,9 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DB_PATH: state/gha-jobs.db
-        run: python -m src.main --mode priority --notify-yes-only --no-notify
+        # Alerts on YES matches immediately rather than waiting for the digest.
+        # Priority companies are the ones worth hearing about first.
+        run: python -m src.main --mode priority --notify-yes-only
 
       - name: Commit state
         run: |
