@@ -6,9 +6,12 @@ name: Job Radar — Software Developer (0-3 yrs)
 # different file and main.py refuses to run this track against the data DBs.
 
 on:
-  # Offset from every data-flow schedule (digest 03/11/19, audit 15, health 13).
+  # Offset from the data-flow schedules (digest :40 of 02/10/18, boards :12 of
+  # even hours, priority :37 of odd hours, audit 15:05, health Mon 13:23).
+  # Every 4h rather than 8h: this track scans and digests in the same run, so
+  # the wait for the next scan was the whole latency a new role saw.
   schedule:
-    - cron: "25 1,9,17 * * *"   # 3x/day, 8h apart — 9pm/5am/1pm ET
+    - cron: "25 1,5,9,13,17,21 * * *"   # every 4h — 9:25pm/1:25am/5:25am/9:25am/1:25pm/5:25pm ET
   workflow_dispatch:
     inputs:
       batch_size:
