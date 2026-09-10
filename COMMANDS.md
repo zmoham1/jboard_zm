@@ -170,7 +170,7 @@ board scrapers but nothing else:
 |---|---|---|
 | Database | `state/gha-jobs.db`, `state/gha-boards.db` | `state/gha-software.db` |
 | Workflow | `boards/priority/main` + `digest` | `software.yml` |
-| Schedule | digest 03/11/19 UTC | 01:25 / 09:25 / 17:25 UTC |
+| Schedule | digest 02:40 / 10:40 / 18:40 UTC | every 4h at :25 (01/05/09/13/17/21 UTC) |
 | Email subject | `[Job Radar Digest]` | `[Job Radar SWE]` |
 
 ```powershell
@@ -216,7 +216,7 @@ shares the board scrapers but nothing else:
 |---|---|---|---|
 | Database | `state/gha-jobs.db`, `state/gha-boards.db` | `state/gha-software.db` | `state/gha-coordinator.db` |
 | Workflow | `boards/priority/main` + `digest` | `software.yml` | `coordinator.yml` |
-| Schedule (UTC) | digest 02:40 / 10:40 / 18:40 | 01:25 / 09:25 / 17:25 | 05:50 / 13:50 / 21:50 |
+| Schedule (UTC) | digest 02:40 / 10:40 / 18:40 | :25 every 4h (01/05/09/13/17/21) | 05:50 / 13:50 / 21:50 |
 | Email subject | `[Job Radar Digest]` | `[Job Radar SWE]` | `[Job Radar PC]` |
 | Concurrency group | `job-radar-shared-state` | `job-radar-software` | `job-radar-coordinator` |
 
