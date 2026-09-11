@@ -38,7 +38,7 @@ from .feedback_scorer import build_feedback_adjustments
 from .job_intelligence import to_structured_json
 from .notifier import CompositeNotifier, EmailNotifier, SlackNotifier, DiscordNotifier
 from .scoring_policy import calibrate_thresholds, label_for_score, resume_fit_cap
-from .sources.base import Job, is_us_location, remote_scope_status
+from .sources.base import SUPPORTED_BOARD_PLATFORMS, Job, is_us_location, remote_scope_status
 from .sources.eightfold import EightfoldSource
 from .sources.amazon import AmazonSource
 from .sources.goldman import GoldmanSachsSource
@@ -69,11 +69,6 @@ from .webapp import serve_web
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
-
-SUPPORTED_BOARD_PLATFORMS = (
-    "greenhouse", "lever", "smartrecruiters", "workday", "ashby", "workable", "jobvite", "icims",
-    "recruitee", "breezyhr", "teamtailor", "dover", "gem", "wellfound", "workatastartup",
-)
 
 log = logging.getLogger(__name__)
 

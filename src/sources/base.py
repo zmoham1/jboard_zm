@@ -7,6 +7,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+# The ATS platforms swept by boards mode. Lives here rather than in main.py so
+# the web UI can group jobs by "came from a board" without importing main,
+# which imports webapp and would close the cycle.
+SUPPORTED_BOARD_PLATFORMS = (
+    "greenhouse", "lever", "smartrecruiters", "workday", "ashby", "workable", "jobvite", "icims",
+    "recruitee", "breezyhr", "teamtailor", "dover", "gem", "wellfound", "workatastartup",
+)
+
 US_STATE_ABBRS = frozenset({
     "al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks","ky","la",
     "me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny","nc","nd","oh","ok",
