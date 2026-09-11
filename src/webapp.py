@@ -24,7 +24,7 @@ from .evaluation import evaluate_job
 from .job_intelligence import extract_workday_req_id
 from .scoring_policy import calibrate_thresholds
 from .resume_builder import generate_resume_packet
-from .sources.base import is_us_location, remote_scope_status
+from .sources.base import SUPPORTED_BOARD_PLATFORMS, is_us_location, remote_scope_status
 
 PIPELINE_STATUSES = [
     "new",
@@ -359,10 +359,19 @@ def _days_value_to_max_days(days_raw: str) -> int:
         return RECENT_JOB_DAYS
 
 
+BOARD_SOURCE_FILTER = "boards"
+
+
 def _source_match(job: dict, source: str) -> bool:
     if not source or source == "all":
         return True
-    return (job.get("source") or "").strip().lower() == source
+    job_source = (job.get("source") or "").strip().lower()
+    # "boards" is a group, not a real source value: every ATS platform swept by
+    # boards mode at once, so the whole board haul is viewable in one list
+    # instead of one platform at a time.
+    if source == BOARD_SOURCE_FILTER:
+        return job_source in SUPPORTED_BOARD_PLATFORMS
+    return job_source == source
 
 
 def _sort_jobs(jobs: list[dict], sort_by: str) -> None:
@@ -586,6 +595,8 @@ def _layout(title: str, body: str) -> bytes:
       display: inline-block; border: 1px solid var(--line); border-radius: 999px;
       padding: 4px 10px; margin-right: 6px; margin-bottom: 6px; background: #fff;
     }}
+    a.pill {{ text-decoration: none; color: inherit; }}
+    a.pill:hover {{ border-color: var(--accent); color: var(--accent); }}
     .split {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
     pre {{
       white-space: pre-wrap; word-break: break-word; background: #fbfaf6;
@@ -1157,9 +1168,19 @@ def serve_web(
             f"<option value=\"{name}\"{' selected' if status == name else ''}>{label}</option>"
             for name, label in (("all", "All statuses"),) + tuple((item, item.replace('_', ' ').title()) for item in PIPELINE_STATUSES)
         )
+        # The board group sits directly under "All" so the whole ATS haul is one
+        # click away. It is listed explicitly because source_names is derived
+        # from the jobs currently in view, and a group value never appears there.
+        source_choices: list[tuple[str, str]] = [
+            ("all", "All"),
+            (BOARD_SOURCE_FILTER, "All job boards (ATS)"),
+        ]
+        source_choices.extend(
+            (name, name.title()) for name in source_names if name != BOARD_SOURCE_FILTER
+        )
         source_options = "".join(
-            f"<option value=\"{escape(name)}\"{' selected' if source == name else ''}>{escape(name.title())}</option>"
-            for name in ["all", *source_names]
+            f"<option value=\"{escape(value)}\"{' selected' if source == value else ''}>{escape(label)}</option>"
+            for value, label in source_choices
         )
         day_options = "".join(
             f"<option value=\"{value}\"{' selected' if days_raw == value else ''}>{label}</option>"
@@ -1579,10 +1600,17 @@ def serve_web(
             f"<option value=\"{escape(name)}\"{' selected' if platform == name else ''}>{escape(name.title())}</option>"
             for name in ["all", *platforms]
         )
+        # Each pill jumps to the jobs actually found on that platform. Counts
+        # stay board counts, which is what this page is about.
         platform_pills = "".join(
-            f"<span class=\"pill\">{escape(name.title())}: {count}</span>"
+            f"<a class=\"pill\" href=\"/?source={quote(name, safe='')}&amp;days=all\">{escape(name.title())}: {count}</a>"
             for name, count in sorted(platform_counts.items())
         ) or "<span class=\"muted\">No boards recorded yet.</span>"
+        # Counted through the same pipeline the link lands on, so the number on
+        # the button matches the number of rows you get after clicking it.
+        board_jobs, _, _, _ = _current_view_jobs(
+            {"days": "all", "queue": "active", "status": "all", "source": BOARD_SOURCE_FILTER, "sort": "newest"}
+        )
         body = (
             "<div class=\"card\">"
             "<h1>Board Health</h1>"
@@ -1593,6 +1621,8 @@ def serve_web(
             f"<div class=\"stat\"><strong>{stats['degraded']}</strong><span>Degraded</span></div>"
             f"<div class=\"stat\"><strong>{stats['dead']}</strong><span>Dead</span></div>"
             "</div>"
+            f"<p><a class=\"button-link\" href=\"/?source={BOARD_SOURCE_FILTER}&amp;days=all\">"
+            f"View all {len(board_jobs)} jobs found on these boards</a></p>"
             f"<div>{platform_pills}</div>"
             "<form method=\"get\" action=\"/boards\" class=\"actions\" data-autosubmit=\"true\">"
             f"<label>Status<br><select name=\"status\">{status_options}</select></label>"
