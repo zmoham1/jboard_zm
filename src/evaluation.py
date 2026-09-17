@@ -22,7 +22,12 @@ from .coordinator_keywords import COORDINATOR_TARGET_ROLES
 from .software_keywords import SOFTWARE_TARGET_ROLES
 from .config import Config
 from .profile import PROFILE, SKILLS_MODERATE, SKILLS_STRONG
-from .scoring_policy import DEFAULT_MAYBE_THRESHOLD, DEFAULT_YES_THRESHOLD, label_for_score
+from .scoring_policy import (
+    DEFAULT_MAYBE_THRESHOLD,
+    DEFAULT_YES_THRESHOLD,
+    label_for_score,
+    structural_block_reason,
+)
 from .sources.base import is_us_location, remote_scope_status
 
 EVAL_CFG = Config.load()
@@ -453,6 +458,49 @@ def _clearance_signal_reason(title: str, text: str) -> str:
     return ""
 
 
+# Phrasing that turns a clearance mention into a nice-to-have. The risk
+# dimension deliberately matches soft mentions too, because "clearance
+# preferred" is still a mild negative signal — but it must not rule the role
+# out, so the hard block needs a stricter reading than the penalty does.
+_CLEARANCE_SOFT_MARKERS = (
+    "preferred", "not required", "nice to have", "a plus", "desired",
+    "desirable", "ideally", "bonus", "advantageous", "willing to obtain",
+    "ability to obtain",
+)
+
+
+def _clearance_hard_block_reason(title: str, text: str) -> str:
+    """Clearance/citizenship reason only when stated as an actual requirement."""
+    title_text = (title or "").strip().lower()
+    full_text = text or ""
+
+    def _sentence_around(index: int) -> str:
+        start = max(full_text.rfind(".", 0, index), full_text.rfind("\n", 0, index)) + 1
+        end = min(
+            (pos for pos in (full_text.find(".", index), full_text.find("\n", index)) if pos != -1),
+            default=len(full_text),
+        )
+        return full_text[start:end].lower()
+
+    for phrase in CLEARANCE_EXCLUDE_PHRASES:
+        index = full_text.find(phrase)
+        while index != -1:
+            if not any(marker in _sentence_around(index) for marker in _CLEARANCE_SOFT_MARKERS):
+                return f"Clearance or citizenship requirement detected: {phrase}."
+            index = full_text.find(phrase, index + 1)
+
+    for pattern in EVAL_CLEARANCE_CONTEXT_REGEXES:
+        for match in re.finditer(pattern, full_text):
+            if not any(marker in _sentence_around(match.start()) for marker in _CLEARANCE_SOFT_MARKERS):
+                return "Clearance or citizenship requirement detected in the job description."
+
+    # A title carrying the clearance is never a nice-to-have.
+    for pattern in CLEARANCE_EXCLUDE_REGEXES:
+        if re.search(pattern, title_text):
+            return "Clearance or citizenship requirement detected in the job title."
+    return ""
+
+
 def _find_seniority_token(text: str) -> str:
     for token in SENIORITY_TOKENS:
         if re.search(rf"\b{re.escape(token)}\b", text):
@@ -479,20 +527,77 @@ def _source_is_strong_first_party(source: str) -> bool:
     return (source or "").strip().lower() in STRONG_DIRECT_SOURCES
 
 
-def _extract_years_requirement(text: str) -> int:
-    matches = re.findall(
-        r"\b(\d{1,2})\+?\s*(?:-|to|–|—)?\s*(\d{1,2})?\s+years?\s+(?:of\s+)?(?:experience|exp)\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if not matches:
-        return 0
-    mins: list[int] = []
-    for low, _high in matches:
-        try:
-            mins.append(int(low))
-        except ValueError:
+def _jd_has_sections(description: str) -> bool:
+    """True when the JD had parseable headings, so text is requirement-scoped."""
+    return set(_jd_sections(description or "")) != {"full_text"}
+
+
+# The original single pattern required "years" to be followed immediately by
+# "experience"/"exp", so it read 0 from the phrasings JDs use most:
+# "6+ years applied ML", "5+ years shipping production models", "minimum 7
+# years in data engineering". That silently disabled the 4+ years block — a
+# "5+ years" senior role scored as a normal maybe instead of being ruled out.
+# A stated range means its LOW end: "2-4 years" is a 2-year floor, not 4. These
+# are matched and removed first, because otherwise the later patterns read the
+# "4 years" out of "2-4 years experience" and block a role that wanted 2.
+_YEARS_RANGE_PATTERN = r"\b(\d{1,2})\s*(?:-|to|–|—)\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)\b"
+
+_YEARS_PATTERNS = (
+    # "minimum of 5 years", "at least 5 years".
+    r"\b(?:minimum|at\s+least|min\.?)\s+(?:of\s+)?(\d{1,2})\s*\+?\s*(?:years?|yrs?)\b",
+    # "5 years of experience", tolerating a couple of words in between
+    # ("5 years of professional software experience").
+    r"\b(\d{1,2})\s*\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:\w+\s+){0,3}?(?:experience|exp)\b",
+)
+# "5+ years <anything>". The plus sign makes it a floor on its own, but the same
+# shape appears in company boilerplate, so it is trusted only when the text is
+# requirement-scoped AND not preceded by a phrase that marks company history.
+_YEARS_BARE_PATTERN = r"\b(\d{1,2})\s*\+\s*(?:years?|yrs?)\b"
+# Staffing-agency and About-Us copy advertises the firm's own tenure in the
+# same shape a requirement uses. A real posting seen in production read
+# "At least 3 years of professional data engineering experience" (fine) and
+# "Why IDR? 25+ Years of Proven Industry Experience" (not a requirement) — and
+# the second one blocked the role.
+_COMPANY_HISTORY_CUES = (
+    "for over", "for more than", "serving", "in business", "history",
+    "we have", "founded", "trusted", "proudly", "why ", "proven",
+    "award", "in a row", "our firm", "our company",
+)
+# No posting a 0-3 year candidate should consider states a floor this high, so
+# a larger number is company tenure rather than a requirement. Applied to every
+# pattern, not just the bare one: "25 years of experience" matches the
+# experience-noun pattern just as readily.
+_YEARS_IMPLAUSIBLE_FLOOR = 15
+
+
+def _plausible_year_values(pattern: str, text: str, group: int = 1) -> list[int]:
+    """Year floors from ``pattern``, dropping company-tenure boilerplate."""
+    values: list[int] = []
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        lead_in = text[max(0, match.start() - 40):match.start()].lower()
+        if any(cue in lead_in for cue in _COMPANY_HISTORY_CUES):
             continue
+        try:
+            value = int(match.group(group))
+        except (TypeError, ValueError):
+            continue
+        if value > _YEARS_IMPLAUSIBLE_FLOOR:
+            continue
+        values.append(value)
+    return values
+
+
+def _extract_years_requirement(text: str, *, allow_bare: bool = False) -> int:
+    mins = _plausible_year_values(_YEARS_RANGE_PATTERN, text)
+    # Ranges are consumed so the later patterns cannot read the high end of
+    # "2-4 years experience" as a 4-year floor.
+    remaining = re.sub(_YEARS_RANGE_PATTERN, " ", text, flags=re.IGNORECASE)
+
+    for pattern in _YEARS_PATTERNS:
+        mins.extend(_plausible_year_values(pattern, remaining))
+    if allow_bare:
+        mins.extend(_plausible_year_values(_YEARS_BARE_PATTERN, remaining))
+
     return max(mins) if mins else 0
 
 
@@ -845,8 +950,43 @@ def evaluate_job(
             dimensions=dimensions,
         )
 
+    # Structural walls first: no amount of skill overlap makes a clearance-only
+    # or no-sponsorship role appliable, and previously they cost a few weighted
+    # points and still arrived as "maybe".
+    structural_block = structural_block_reason(
+        title,
+        description,
+        required_text=_jd_sections(description or "").get("required", ""),
+        # Stricter than the risk dimension's detector, which also flags
+        # "clearance preferred" to apply a penalty.
+        clearance_reason=_clearance_hard_block_reason(title, text),
+    )
+    if structural_block:
+        dimensions = [
+            EvaluationDimension("risk", 0.10, 0, structural_block),
+            EvaluationDimension("title_fit", 0.25, 0, "Evaluation stopped by a structural blocker."),
+            EvaluationDimension("skill_overlap", 0.25, 0, "Evaluation stopped by a structural blocker."),
+            EvaluationDimension("target_alignment", 0.15, 0, "Evaluation stopped by a structural blocker."),
+            EvaluationDimension("seniority_fit", 0.10, 0, "Evaluation stopped by a structural blocker."),
+            EvaluationDimension("location_fit", 0.05, 0, "Evaluation stopped by a structural blocker."),
+            EvaluationDimension("evidence_quality", 0.10, 0, "Evaluation stopped by a structural blocker."),
+        ]
+        return EvaluationResult(
+            score=0,
+            label="no",
+            grade="F",
+            matched_strong=matched_strong,
+            matched_moderate=matched_moderate,
+            unsupported_strong=assessment.unsupported_strong,
+            unsupported_moderate=assessment.unsupported_moderate,
+            critical_skill_gaps=assessment.critical_skill_gaps,
+            reasons=[structural_block],
+            fit_summary=structural_block,
+            dimensions=dimensions,
+        )
+
     years_text = _years_requirement_text(title, description, text)
-    years_required = _extract_years_requirement(years_text)
+    years_required = _extract_years_requirement(years_text, allow_bare=_jd_has_sections(description))
     if years_required >= 4:
         block_reason = f"Blocked because the role requires {years_required}+ years of experience, above your 0-3 year target range."
         dimensions = [

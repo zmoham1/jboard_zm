@@ -1,10 +1,33 @@
 import unittest
 from unittest.mock import patch
 
+import src.evaluation as evaluation
 from src.evaluation import _jd_sections, evaluate_job
+
+# These tests exercise scoring logic, not the candidate's skill list, but they
+# assert on java/kafka/kubernetes — which the tracked placeholder profile
+# happens to contain. A real src/profile_local.py replaces SKILLS_STRONG
+# wholesale and legitimately drops all three, which silently broke four tests
+# the moment a genuine profile was supplied. Pinning the sets keeps the suite
+# measuring the logic under any profile.
+TEST_SKILLS_STRONG = {
+    "bigquery", "data modeling", "etl", "java", "kafka", "kubernetes",
+    "power bi", "python", "sql", "tableau", "spark", "airflow", "dbt",
+    "snowflake", "machine learning",
+}
+TEST_SKILLS_MODERATE = {"looker", "pytest", "experimentation", "arima"}
 
 
 class EvaluationEvidenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        for name, value in (
+            ("SKILLS_STRONG", TEST_SKILLS_STRONG),
+            ("SKILLS_MODERATE", TEST_SKILLS_MODERATE),
+        ):
+            patcher = patch.object(evaluation, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_critical_skill_without_resume_evidence_caps_score(self) -> None:
         jd = (
             "Data Engineer. Required: 3 years of enterprise Java experience, "
@@ -175,7 +198,16 @@ class EvaluationEvidenceTests(unittest.TestCase):
         self.assertNotEqual(result.score, 0)
         self.assertFalse(any("citizenship" in reason.lower() and "blocked" in reason.lower() for reason in result.reasons))
 
-    def test_citizenship_requirement_is_scored_not_blocked(self) -> None:
+    def test_citizenship_requirement_hard_blocks_role(self) -> None:
+        """A citizenship requirement rules the role out rather than costing points.
+
+        This previously asserted the opposite (test_citizenship_requirement_is_
+        scored_not_blocked: score != 0). The candidate is on F1 OPT, so a
+        citizenship or clearance requirement is an absolute wall, not a risk
+        factor — and as a weighted 10% dimension it was not even decisive: a
+        posting stating "Active SECRET clearance required. US citizenship
+        required." still scored 59 and arrived in the digest as "maybe".
+        """
         jd = (
             "Build scalable evaluations for LLM performance.\n"
             "U.S. citizenship is required for this role.\n"
@@ -193,8 +225,36 @@ class EvaluationEvidenceTests(unittest.TestCase):
                 require_us_location=False,
             )
 
-        self.assertNotEqual(result.score, 0)
+        self.assertEqual(result.score, 0)
+        self.assertEqual(result.label, "no")
         self.assertTrue(any("citizenship requirement detected" in reason.lower() for reason in result.reasons))
+
+    def test_preferred_clearance_does_not_hard_block(self) -> None:
+        """"Clearance preferred" is not a requirement, so it must not block.
+
+        The risk-dimension detection deliberately matches soft phrasing like
+        "clearance preferred" and "clearance eligible" to apply a penalty.
+        Promoting that same detection to a hard block would rule out roles that
+        merely mention a clearance as a nice-to-have.
+        """
+        jd = (
+            "Requirements:\n"
+            "- Strong SQL and Python for analytics pipelines.\n"
+            "- An active security clearance is preferred but not required.\n"
+        )
+        evidence = "Built SQL and Python analytics pipelines."
+
+        with patch("src.evaluation._resume_evidence_text", return_value=evidence):
+            result = evaluate_job(
+                "Data Analyst",
+                jd,
+                company="Example",
+                location="Arlington, VA",
+                source="linkedin",
+                require_us_location=False,
+            )
+
+        self.assertNotEqual(result.score, 0)
 
 
 if __name__ == "__main__":
