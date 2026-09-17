@@ -1,0 +1,66 @@
+name: "Materialize local profile"
+description: >
+  Write src/profile_local.py from a secret so CI scores against the real
+  candidate profile instead of the generic placeholder in src/profile.py.
+
+# src/profile_local.py is gitignored on purpose — it holds a real name, email,
+# phone and LinkedIn, and the repo should not. That means CI never had it, so
+# every scheduled scan silently scored against the tracked placeholder: name
+# "candidate name", 33 unranked target roles, and the stub bullets in
+# data/resume/candidate_evidence.md rather than a real resume. The scoring
+# still ran and the emails still sent, so nothing looked broken.
+#
+# Passing the file through a secret keeps it out of git while letting CI use
+# it. Absent the secret this is a no-op with a loud warning, so the gap is
+# visible in the run log instead of silent.
+
+inputs:
+  profile-py:
+    description: "Contents of src/profile_local.py (from secrets.PROFILE_LOCAL_PY)"
+    required: false
+    default: ""
+  candidate-evidence:
+    description: "Contents of data/resume/candidate_evidence.local.md (from secrets.CANDIDATE_EVIDENCE_MD)"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Write local profile files
+      shell: bash
+      # Secrets reach the script through env, never as inline ${{ }} in run:.
+      # Interpolating them into the script body would place their literal text
+      # in the command line, where a value containing quotes or a newline can
+      # break the shell, and would risk echoing them into the log.
+      env:
+        PROFILE_PY: ${{ inputs.profile-py }}
+        CANDIDATE_EVIDENCE: ${{ inputs.candidate-evidence }}
+      run: |
+        wrote_any=0
+        if [ -n "$PROFILE_PY" ]; then
+          printf '%s' "$PROFILE_PY" > src/profile_local.py
+          # Fail loudly on a malformed secret rather than letting the import
+          # fall back to the placeholder and score a whole sweep wrongly.
+          python -c "import ast,sys; ast.parse(open('src/profile_local.py').read())" || {
+            echo "::error::PROFILE_LOCAL_PY is not valid Python; refusing to run against a broken profile."
+            exit 1
+          }
+          echo "Local profile written ($(wc -l < src/profile_local.py) lines)."
+          wrote_any=1
+        else
+          echo "::warning::PROFILE_LOCAL_PY secret is not set. Scoring will use the generic placeholder profile in src/profile.py (name \"candidate name\", unranked target roles)."
+        fi
+
+        if [ -n "$CANDIDATE_EVIDENCE" ]; then
+          mkdir -p data/resume
+          printf '%s' "$CANDIDATE_EVIDENCE" > data/resume/candidate_evidence.local.md
+          echo "Local candidate evidence written ($(wc -l < data/resume/candidate_evidence.local.md) lines)."
+          wrote_any=1
+        else
+          echo "::warning::CANDIDATE_EVIDENCE_MD secret is not set. JD matching will use the stub bullets in data/resume/candidate_evidence.md."
+        fi
+
+        if [ "$wrote_any" = "0" ]; then
+          echo "::warning::No local profile secrets present — this run scores against placeholder data."
+        fi

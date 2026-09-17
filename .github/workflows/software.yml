@@ -44,6 +44,12 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Materialize local profile
+        uses: ./.github/actions/local-profile
+        with:
+          profile-py: ${{ secrets.PROFILE_LOCAL_PY }}
+          candidate-evidence: ${{ secrets.CANDIDATE_EVIDENCE_MD }}
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
