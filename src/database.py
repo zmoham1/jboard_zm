@@ -257,7 +257,51 @@ class Database:
             kwargs["auth_token"] = self.turso_auth_token
         return libsql.connect(path, **kwargs)
 
+    # expire_old_jobs deletes rows, but SQLite only marks the freed pages
+    # reusable — it never returns them to the OS. Every CI run then commits the
+    # full padded file. state/gha-jobs.db reached 59.5 MB of which 43.3 MB
+    # (72%) was free pages, past GitHub's 50 MB warning and heading for the
+    # 100 MB hard limit, while holding only ~16 MB of actual rows.
+    #
+    # Compacting is gated on both a ratio and an absolute size so small or
+    # already-tight databases are left alone: gha-boards.db sits at 0% free and
+    # must not be rewritten on every close for nothing.
+    VACUUM_MIN_FREE_RATIO = 0.25
+    VACUUM_MIN_FREE_BYTES = 4 * 1024 * 1024
+
+    def compact_if_bloated(self) -> int:
+        """VACUUM when free pages dominate. Returns bytes reclaimed, 0 if skipped."""
+        if self._uses_turso:
+            return 0
+        try:
+            with self._lock:
+                page_size = self._conn.execute("PRAGMA page_size").fetchone()[0]
+                page_count = self._conn.execute("PRAGMA page_count").fetchone()[0]
+                free_pages = self._conn.execute("PRAGMA freelist_count").fetchone()[0]
+                if not page_count:
+                    return 0
+                free_bytes = page_size * free_pages
+                if free_bytes < self.VACUUM_MIN_FREE_BYTES:
+                    return 0
+                if (free_pages / page_count) < self.VACUUM_MIN_FREE_RATIO:
+                    return 0
+                # VACUUM cannot run inside a transaction; commit any pending work.
+                self._conn.commit()
+                self._conn.execute("VACUUM")
+                self._conn.commit()
+            log.info(
+                "Compacted %s — reclaimed %.1f MB of free pages.",
+                self.path,
+                free_bytes / 1e6,
+            )
+            return free_bytes
+        except Exception as exc:
+            # Compaction is housekeeping; never let it take down a scan.
+            log.warning("Skipping compaction of %s — %s", self.path, exc)
+            return 0
+
     def close(self) -> None:
+        self.compact_if_bloated()
         with self._lock:
             self._conn.close()
 
