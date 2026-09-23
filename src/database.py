@@ -1398,8 +1398,43 @@ class Database:
     # -------------------------------------------------------------------------
 
     def expire_old_jobs(self, days: int = 14) -> int:
-        """Delete jobs not seen within the last `days` days. Returns count deleted."""
+        """Delete jobs not seen within the last `days` days. Returns count deleted.
+
+        Before deleting, the alerted stamp is carried forward to any surviving
+        duplicate of the same role. get_pending_alert_jobs suppresses a repost
+        only while some copy carrying an alerted_at still exists, so deleting
+        the emailed original silently re-opens every duplicate of it.
+
+        Seen in production: the FairSquare "Senior Business Intelligence
+        Analyst" was emailed on 2026-09-09 as linkedin:4463535959, with
+        linkedin:4463598699 held back as its repost. Once the original aged
+        out, the repost became a 13-day-old "missed" match and the next audit
+        would have re-sent a role already delivered two weeks earlier.
+        """
         with self._tx() as conn:
+            # Stamp survivors first, inside the same transaction, so a crash
+            # between the two statements cannot drop the suppression.
+            carry = conn.execute(
+                """
+                UPDATE jobs SET alerted_at = (
+                    SELECT MAX(o.alerted_at) FROM jobs o
+                    WHERE o.canonical_key = jobs.canonical_key
+                      AND o.alerted_at <> ''
+                      AND o.last_seen < datetime('now', ?)
+                )
+                WHERE alerted_at = ''
+                  AND canonical_key <> ''
+                  AND last_seen >= datetime('now', ?)
+                  AND EXISTS (
+                    SELECT 1 FROM jobs o
+                    WHERE o.canonical_key = jobs.canonical_key
+                      AND o.alerted_at <> ''
+                      AND o.last_seen < datetime('now', ?)
+                  )
+                """,
+                (f"-{days} days", f"-{days} days", f"-{days} days"),
+            )
+            carried = carry.rowcount
             cur = conn.execute(
                 "DELETE FROM jobs WHERE last_seen < datetime('now', ?)",
                 (f"-{days} days",),
@@ -1407,6 +1442,11 @@ class Database:
             deleted = cur.rowcount
         if deleted:
             log.info("Expired %d stale job(s) older than %d days", deleted, days)
+        if carried:
+            log.info(
+                "Carried the alerted stamp to %d surviving duplicate(s) so they are not re-sent as missed.",
+                carried,
+            )
         return deleted
 
     def prune_source_runs(self, days: int = 3) -> int:
