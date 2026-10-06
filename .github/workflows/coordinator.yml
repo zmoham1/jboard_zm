@@ -11,11 +11,22 @@ name: Job Radar — Project Coordinator
 # by the title gate in main.py before it was ever stored.
 
 on:
-  # Offset from every other schedule (data digest 02:40/10:40/18:40, software
-  # 01:25/09:25/17:25, audit 15:05, main 13:23). 3x/day, 8h apart —
-  # 1:50am / 9:50am / 5:50pm ET during EDT, an hour earlier under EST.
-  schedule:
-    - cron: "50 5,13,21 * * *"
+  # Scheduled runs are OFF. The track never produced a usable match: across its
+  # whole lifetime it stored 88 roles, scored none above the high 60s, and so
+  # reached "yes" zero times. 48 of those 88 were structurally blocked anyway
+  # (clearance, no-sponsorship, 4+ years), intake had fallen to about one role
+  # a day, and no alert had gone out in over four days. Scoring is capped by
+  # resume fit and the resume carries no project-coordinator evidence, so the
+  # ceiling is structural rather than a tuning problem.
+  #
+  # Each run swept all 1,292 boards for roughly 25 minutes, so this was about
+  # 70 minutes of runner time a day for nothing.
+  #
+  # Left runnable on demand rather than deleted: the database, keywords and
+  # subject prefix all still work, so re-enabling is just restoring the cron
+  # line below.
+  #   schedule:
+  #     - cron: "50 5,13,21 * * *"
   workflow_dispatch:
     inputs:
       batch_size:
