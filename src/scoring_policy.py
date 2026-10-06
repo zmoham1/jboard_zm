@@ -29,7 +29,38 @@ SPONSORSHIP_BLOCK_REGEXES = (
     r"\bno\s+(?:stem\s+)?opt\b",
     r"\b(?:opt|stem\s+opt|cpt)\s+(?:candidates\s+)?(?:are\s+)?not\s+(?:eligible|accepted|considered)\b",
     r"\bmust\s+(?:be\s+)?(?:legally\s+)?authorized\s+to\s+work\s+.{0,40}\bwithout\s+sponsorship\b",
+    # --- added after auditing 221 postings that slipped through ---
+    # The standard enterprise clause, seen 92 times: "work authorization that
+    # does not now or in the future require sponsorship". The bare phrase
+    # "must have work authorization" is deliberately NOT matched — on its own
+    # it means any status, including OPT, and blocking on it would rule out
+    # most US postings.
+    r"\bwork\s+authorization\s+that\s+does\s+not\s+(?:now\s+or\s+in\s+the\s+future\s+)?require\s+sponsorship\b",
+    r"\bdoes\s+not\s+(?:now\s+or\s+in\s+the\s+future\s+)?require\s+(?:visa\s+|immigration\s+)?sponsorship\b",
+    # "will not provide immigration sponsorship" (46), "no immigration
+    # sponsorship is available" (4).
+    r"\b(?:not|will\s+not|do\s+not|does\s+not|cannot|unable\s+to)\s+(?:be\s+able\s+to\s+)?(?:provide|offer|sponsor)\s+(?:for\s+)?immigration\b",
+    r"\bno\s+immigration\s+sponsor(?:ship)?\b",
+    # "does not sponsor visa applications" (32).
+    r"\b(?:does|do|will|can)\s+not\s+sponsor\b",
+    # "legal authorization to work ... without employer sponsorship" (27).
+    r"\bwithout\s+(?:employer|company|visa|immigration)\s+sponsorship\b",
+    r"\bineligible\s+for\s+(?:visa\s+|immigration\s+)?sponsorship\b",
 )
+
+# Citizenship-or-green-card restrictions. These exclude an F1 OPT candidate
+# just as firmly as a clearance does, but the phrasing is immigration status
+# rather than clearance, so the clearance detector never saw them. Both forms
+# require the restriction to read as a requirement — "US citizen or permanent
+# resident" appears in equal-opportunity boilerplate too, where it is listed
+# among protected classes rather than demanded.
+STATUS_RESTRICTION_REGEXES = (
+    r"\b(?:must\s+be|restricted\s+to|limited\s+to|open\s+only\s+to)\s+(?:a\s+)?(?:u\.?s\.?\s+)?citizens?\s+or\s+(?:lawful\s+)?permanent\s+residents?\b",
+    r"\b(?:must\s+be|restricted\s+to|limited\s+to)\s+(?:a\s+)?(?:u\.?s\.?\s+)?citizens?\s+or\s+green\s+card\s+holders?\b",
+    r"\b(?:u\.?s\.?\s+)?citizens?\s+or\s+green\s+card\s+holders?\s+only\b",
+    r"\bgreen\s+card\s+holders?\s+only\b",
+)
+
 
 ENROLLMENT_BLOCK_REGEXES = (
     r"\bstudent\s+worker\b",
@@ -128,6 +159,10 @@ def structural_block_reason(
     hit = _search_any(SPONSORSHIP_BLOCK_REGEXES, body)
     if hit:
         return f"Blocked: the posting rules out visa sponsorship ({hit})."
+
+    hit = _search_any(STATUS_RESTRICTION_REGEXES, body)
+    if hit:
+        return f"Blocked: restricted to citizens or permanent residents ({hit})."
 
     hit = _search_any(ENROLLMENT_BLOCK_REGEXES, body) or _search_any(ENROLLMENT_BLOCK_REGEXES, title_text)
     if hit:
