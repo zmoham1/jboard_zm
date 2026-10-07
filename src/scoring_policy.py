@@ -59,6 +59,21 @@ STATUS_RESTRICTION_REGEXES = (
     r"\b(?:must\s+be|restricted\s+to|limited\s+to)\s+(?:a\s+)?(?:u\.?s\.?\s+)?citizens?\s+or\s+green\s+card\s+holders?\b",
     r"\b(?:u\.?s\.?\s+)?citizens?\s+or\s+green\s+card\s+holders?\s+only\b",
     r"\bgreen\s+card\s+holders?\s+only\b",
+    # "U.S. person" is the export-control term of art and excludes an F1 OPT
+    # holder outright, but the clearance detector only looked for "citizen"
+    # and "clearance". Seen on 11 unblocked postings, e.g. Astronautics
+    # Data Engineer: "must be a u.s. person as defined under u.s. export
+    # regulations", which scored 72 and was emailed as a strong match.
+    #
+    # Only the requirement form is matched. Many postings carry a conditional
+    # disclaimer instead — Databricks: "if access to export-controlled
+    # technology or source code is required for performance of the role..." —
+    # which states a contingency, not a bar, and must not block.
+    r"\bmust\s+be\s+(?:a\s+)?u\.?\s?s\.?\s+person\b",
+    r"\bmust\s+qualify\s+as\s+(?:a\s+)?u\.?\s?s\.?\s+person\b",
+    r"\bu\.?\s?s\.?\s+person\s+(?:status\s+)?(?:is\s+)?required\b",
+    r"\b(?:restricted|limited)\s+to\s+u\.?\s?s\.?\s+persons?\b",
+    r"\bitar[\s-]restricted\b",
 )
 
 
@@ -162,7 +177,7 @@ def structural_block_reason(
 
     hit = _search_any(STATUS_RESTRICTION_REGEXES, body)
     if hit:
-        return f"Blocked: restricted to citizens or permanent residents ({hit})."
+        return f"Blocked: restricted by citizenship or export-control status ({hit})."
 
     hit = _search_any(ENROLLMENT_BLOCK_REGEXES, body) or _search_any(ENROLLMENT_BLOCK_REGEXES, title_text)
     if hit:
