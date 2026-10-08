@@ -1252,6 +1252,15 @@ def _dispatch_results(
     if notify_yes_only and new_maybe and not new_yes:
         log.info("Skipping notification because only MAYBE matches were found.")
 
+    # Keys this scan actually emailed. They are stamped alerted_at after the
+    # persist loop below, because the rows do not exist until then. Without the
+    # stamp they stay pending and the next digest emails them a second time --
+    # which is exactly what happened once the scan modes stopped passing
+    # --no-notify: the 16:55 priority alert and the 17:35 digest carried the
+    # same 16 roles. Anything the scan did not email stays pending on purpose,
+    # so --notify-yes-only still hands its MAYBE matches to the digest.
+    emailed_keys: list[str] = []
+
     if notify_yes or notify_maybe:
         if no_notify or not notifications_enabled:
             log.info("[no-notify] Would alert: %d yes + %d maybe", len(notify_yes), len(notify_maybe))
@@ -1259,6 +1268,12 @@ def _dispatch_results(
             errs = notifier.notify(notify_yes, notify_maybe, subject_prefix=ALERT_SUBJECT_PREFIX, mode=mode, source_errors=source_errors)
             for e in errs:
                 log.error("Notifier error: %s", e)
+            if errs:
+                # Same failure posture as the digest: leave them pending so the
+                # digest retries. Re-sending beats silently dropping a match.
+                log.warning("Delivery reported errors; leaving jobs pending for the digest.")
+            else:
+                emailed_keys = [j.key for j in notify_yes + notify_maybe if j.key]
     else:
         log.info("No new matching jobs.")
 
@@ -1291,6 +1306,13 @@ def _dispatch_results(
                 employer_quality_reason=getattr(j, "employer_quality_reason", ""),
             )
         log.debug("Saved %d jobs to database.", len(matched))
+
+        # Now that the rows exist, record that this scan already emailed them.
+        # Must run before expire_old_jobs, which carries alerted stamps forward
+        # onto surviving duplicates of the same canonical_key.
+        if emailed_keys:
+            db.mark_jobs_alerted(emailed_keys)
+            log.info("Marked %d job(s) alerted by this %s scan.", len(emailed_keys), mode)
 
         # Auto-expiry: clean up jobs not seen in 14 days to keep the DB lean.
         db.expire_old_jobs(days=14)
