@@ -83,6 +83,12 @@ greenhouse:vesper,greenhouse,Vesper,https://boards.greenhouse.io/vesper,0,HTTP 4
 greenhouse:veza,greenhouse,Veza Technologies,https://boards.greenhouse.io/veza,1,HTTP 404,2026-06-19T00:00:44.413341+00:00
 greenhouse:wayve,greenhouse,Wayve,https://job-boards.greenhouse.io/wayve,1,HTTP 404,2026-10-02T00:13:47.198993+00:00
 greenhouse:zymergen,greenhouse,Zymergen,https://boards.greenhouse.io/zymergen,6,HTTP 404,2026-06-02T17:08:42.044661+00:00
+icims:careers-draper,icims,Charles Stark Draper Laboratory,https://careers-draper.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:51.983377+00:00
+icims:careers-ga,icims,General Atomics,https://careers-ga.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:52.015136+00:00
+icims:careers-icf,icims,ICF International,https://careers-icf.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:52.037589+00:00
+icims:careers-noblis,icims,Noblis,https://careers-noblis.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:53.822992+00:00
+icims:careers-pae,icims,PAE,https://careers-pae.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:53.912803+00:00
+icims:careers-v2x,icims,V2X,https://careers-v2x.icims.com/jobs/search,0,HTTP 404,2026-10-08T20:17:53.865551+00:00
 lever:Rarible,lever,Rarible,https://jobs.lever.co/Rarible,10,HTTP 404,2026-08-06T23:23:04.153993+00:00
 lever:clarity-ai,lever,Clarity AI,https://jobs.lever.co/clarity-ai,0,HTTP 404,2026-05-11T22:04:41.317856+00:00
 lever:forto,lever,Forto,https://jobs.lever.co/forto,0,HTTP 404,2026-05-11T22:04:41.573845+00:00
