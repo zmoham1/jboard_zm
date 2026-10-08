@@ -1292,3 +1292,159 @@ Gem,gem,https://www.gem.com/careers,US,Added to exercise new Gem adapter against
 Teamtailor,teamtailor,https://career.teamtailor.com/,Global,Added to exercise new Teamtailor adapter against a public careers page
 Wellfound,wellfound,https://wellfound.com/jobs,US,Added to exercise new Wellfound adapter against the public startup jobs page
 Y Combinator Work at a Startup,workatastartup,https://www.workatastartup.com/job_list,US,Added to exercise new Work at a Startup adapter against the public YC jobs board
+Charles Stark Draper Laboratory,icims,https://careers-draper.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+General Atomics,icims,https://careers-ga.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+General Dynamics (corporate),icims,https://careers-generaldynamics.icims.com/jobs/intro,,Imported from ms-job-watcher; unverified from this container
+General Dynamics (corporate),icims,https://careers-generaldynamics.icims.com/jobs/search,,Imported from ms-job-watcher; unverified from this container
+General Dynamics Mission Systems,icims,https://careers-gdgit.icims.com/jobs/intro,,Imported from ms-job-watcher; unverified from this container
+General Dynamics Mission Systems,icims,https://careers-gdgit.icims.com/jobs/search,,Imported from ms-job-watcher; unverified from this container
+ICF International,icims,https://careers-icf.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+Noblis,icims,https://careers-noblis.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+PAE,icims,https://careers-pae.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+SRI International,icims,https://jobs.sri.com,US,Imported from ms-job-watcher; unverified from this container
+V2X,icims,https://careers-v2x.icims.com/jobs/search,US,Imported from ms-job-watcher; unverified from this container
+Accenture Federal,jobvite,https://jobs.jobvite.com/accenturefederal,US,Imported from ms-job-watcher; unverified from this container
+Acosta,jobvite,https://jobs.jobvite.com/acosta,US,Imported from ms-job-watcher; unverified from this container
+Activision,jobvite,https://jobs.jobvite.com/activision,US,Imported from ms-job-watcher; unverified from this container
+Adobe Systems,jobvite,https://jobs.jobvite.com/adobe,US,Imported from ms-job-watcher; unverified from this container
+Advance Auto Parts,jobvite,https://jobs.jobvite.com/advanceautoparts,US,Imported from ms-job-watcher; unverified from this container
+AIG Technologies,jobvite,https://jobs.jobvite.com/aig-technologies,US,Imported from ms-job-watcher; unverified from this container
+Alaska Airlines Jobs,jobvite,https://jobs.jobvite.com/alaskaair,US,Imported from ms-job-watcher; unverified from this container
+Albertsons,jobvite,https://jobs.jobvite.com/albertsons,US,Imported from ms-job-watcher; unverified from this container
+Allscripts,jobvite,https://jobs.jobvite.com/allscripts,US,Imported from ms-job-watcher; unverified from this container
+Amazon Web Services,jobvite,https://jobs.jobvite.com/aws,US,Imported from ms-job-watcher; unverified from this container
+American Tower,jobvite,https://jobs.jobvite.com/americantower,US,Imported from ms-job-watcher; unverified from this container
+Ancestry,jobvite,https://jobs.jobvite.com/ancestry,US,Imported from ms-job-watcher; unverified from this container
+Aon Corporation,jobvite,https://jobs.jobvite.com/aon,Global,Imported from ms-job-watcher; unverified from this container
+Apple Retail,jobvite,https://jobs.jobvite.com/apple,US,Imported from ms-job-watcher; unverified from this container
+Applied Materials Inc,jobvite,https://jobs.jobvite.com/amat,US,Imported from ms-job-watcher; unverified from this container
+Arista,jobvite,https://jobs.jobvite.com/arista,US,Imported from ms-job-watcher; unverified from this container
+Athenahealth,jobvite,https://jobs.jobvite.com/athenahealth,US,Imported from ms-job-watcher; unverified from this container
+Autodesk Careers,jobvite,https://jobs.jobvite.com/autodesk,US,Imported from ms-job-watcher; unverified from this container
+AutoNation,jobvite,https://jobs.jobvite.com/autonation,US,Imported from ms-job-watcher; unverified from this container
+AutoZone,jobvite,https://jobs.jobvite.com/autozone,US,Imported from ms-job-watcher; unverified from this container
+Avalara,jobvite,https://jobs.jobvite.com/avalara,US,Imported from ms-job-watcher; unverified from this container
+Avaya,jobvite,https://jobs.jobvite.com/avaya,US,Imported from ms-job-watcher; unverified from this container
+Avis Budget Group,jobvite,https://jobs.jobvite.com/avisbudgetgroup,US,Imported from ms-job-watcher; unverified from this container
+Axon Enterprise,jobvite,https://jobs.jobvite.com/axon,US,Imported from ms-job-watcher; unverified from this container
+Barclays,jobvite,https://jobs.jobvite.com/barclays,Global,Imported from ms-job-watcher; unverified from this container
+Baxter Healthcare,jobvite,https://jobs.jobvite.com/baxter,US,Imported from ms-job-watcher; unverified from this container
+BB&T Bank,jobvite,https://jobs.jobvite.com/bbt,US,Imported from ms-job-watcher; unverified from this container
+Best Buy,jobvite,https://jobs.jobvite.com/bestbuy,US,Imported from ms-job-watcher; unverified from this container
+Biogen Idec,jobvite,https://jobs.jobvite.com/biogenidec,US,Imported from ms-job-watcher; unverified from this container
+Blackbaud,jobvite,https://jobs.jobvite.com/blackbaud,US,Imported from ms-job-watcher; unverified from this container
+Bloomberg LP,jobvite,https://jobs.jobvite.com/bloomberg,US,Imported from ms-job-watcher; unverified from this container
+Blue Cross Blue Shield,jobvite,https://jobs.jobvite.com/bcbs,US,Imported from ms-job-watcher; unverified from this container
+Bluebird Bio,jobvite,https://jobs.jobvite.com/bluebirdbio,US,Imported from ms-job-watcher; unverified from this container
+BMC Software,jobvite,https://jobs.jobvite.com/bmc,US,Imported from ms-job-watcher; unverified from this container
+BNP Paribas,jobvite,https://jobs.jobvite.com/bnpparibas,Global,Imported from ms-job-watcher; unverified from this container
+Boeing Company,jobvite,https://jobs.jobvite.com/boeing,US,Imported from ms-job-watcher; unverified from this container
+Booz Allen,jobvite,https://jobs.jobvite.com/boozallen,US,Imported from ms-job-watcher; unverified from this container
+Boston Scientific Corp,jobvite,https://jobs.jobvite.com/bostonscientific,US,Imported from ms-job-watcher; unverified from this container
+Box Inc,jobvite,https://jobs.jobvite.com/box,US,Imported from ms-job-watcher; unverified from this container
+Bridgewater Associates,jobvite,https://jobs.jobvite.com/bridgewater,US,Imported from ms-job-watcher; unverified from this container
+Broadridge,jobvite,https://jobs.jobvite.com/broadridge,US,Imported from ms-job-watcher; unverified from this container
+CA Technologies,jobvite,https://jobs.jobvite.com/ca,US,Imported from ms-job-watcher; unverified from this container
+Cadence Design,jobvite,https://jobs.jobvite.com/cadence,US,Imported from ms-job-watcher; unverified from this container
+California ISO,jobvite,https://jobs.jobvite.com/caiso,US,Imported from ms-job-watcher; unverified from this container
+Capgemini,jobvite,https://jobs.jobvite.com/capgemini,Global,Imported from ms-job-watcher; unverified from this container
+Cardinal Health Inc,jobvite,https://jobs.jobvite.com/cardinalhealth,US,Imported from ms-job-watcher; unverified from this container
+Carlson,jobvite,https://jobs.jobvite.com/carlson,US,Imported from ms-job-watcher; unverified from this container
+Carnival,jobvite,https://jobs.jobvite.com/carnival,US,Imported from ms-job-watcher; unverified from this container
+CBRE Group,jobvite,https://jobs.jobvite.com/cbre,Global,Imported from ms-job-watcher; unverified from this container
+CenturyLink Communications,jobvite,https://jobs.jobvite.com/centurylink,US,Imported from ms-job-watcher; unverified from this container
+Change Healthcare,jobvite,https://jobs.jobvite.com/changehealthcare,US,Imported from ms-job-watcher; unverified from this container
+Charles River,jobvite,https://jobs.jobvite.com/charlesriver,US,Imported from ms-job-watcher; unverified from this container
+Charter Spectrum,jobvite,https://jobs.jobvite.com/charter,US,Imported from ms-job-watcher; unverified from this container
+Chico's FAS,jobvite,https://jobs.jobvite.com/chicos,US,Imported from ms-job-watcher; unverified from this container
+CHS Inc,jobvite,https://jobs.jobvite.com/chsinc,US,Imported from ms-job-watcher; unverified from this container
+CIBC,jobvite,https://jobs.jobvite.com/cibc,Global,Imported from ms-job-watcher; unverified from this container
+Cigna Corp,jobvite,https://jobs.jobvite.com/cigna,US,Imported from ms-job-watcher; unverified from this container
+Cintas,jobvite,https://jobs.jobvite.com/cintas,US,Imported from ms-job-watcher; unverified from this container
+Citadel,jobvite,https://jobs.jobvite.com/citadel,US,Imported from ms-job-watcher; unverified from this container
+Citrix Systems,jobvite,https://jobs.jobvite.com/citrix,US,Imported from ms-job-watcher; unverified from this container
+Clorox Company,jobvite,https://jobs.jobvite.com/clorox,US,Imported from ms-job-watcher; unverified from this container
+Cloudera Inc,jobvite,https://jobs.jobvite.com/cloudera,US,Imported from ms-job-watcher; unverified from this container
+CNA Financial,jobvite,https://jobs.jobvite.com/cna,US,Imported from ms-job-watcher; unverified from this container
+Cognex,jobvite,https://jobs.jobvite.com/cognex,US,Imported from ms-job-watcher; unverified from this container
+Cognizant Tech,jobvite,https://jobs.jobvite.com/cognizant,Global,Imported from ms-job-watcher; unverified from this container
+Colgate-Palmolive,jobvite,https://jobs.jobvite.com/colgate,Global,Imported from ms-job-watcher; unverified from this container
+Columbia University Medical,jobvite,https://jobs.jobvite.com/columbia,US,Imported from ms-job-watcher; unverified from this container
+Comcast NBCUniversal,jobvite,https://jobs.jobvite.com/comcast,US,Imported from ms-job-watcher; unverified from this container
+Commodity Futures Trading,jobvite,https://jobs.jobvite.com/cftc,US,Imported from ms-job-watcher; unverified from this container
+Confluence,jobvite,https://jobs.jobvite.com/confluent,US,Imported from ms-job-watcher; unverified from this container
+Constellation Energy,jobvite,https://jobs.jobvite.com/constellation,US,Imported from ms-job-watcher; unverified from this container
+CoreSite,jobvite,https://jobs.jobvite.com/coresite,US,Imported from ms-job-watcher; unverified from this container
+Cornerstone OnDemand,jobvite,https://jobs.jobvite.com/cornerstone,US,Imported from ms-job-watcher; unverified from this container
+Cox Automotive,jobvite,https://jobs.jobvite.com/coxauto,US,Imported from ms-job-watcher; unverified from this container
+Credit Suisse,jobvite,https://jobs.jobvite.com/creditsuisse,Global,Imported from ms-job-watcher; unverified from this container
+Cree,jobvite,https://jobs.jobvite.com/cree,US,Imported from ms-job-watcher; unverified from this container
+Crown Castle,jobvite,https://jobs.jobvite.com/crowncastle,US,Imported from ms-job-watcher; unverified from this container
+CSC,jobvite,https://jobs.jobvite.com/csc,US,Imported from ms-job-watcher; unverified from this container
+Cummins Inc,jobvite,https://jobs.jobvite.com/cummins,US,Imported from ms-job-watcher; unverified from this container
+Cushman Wakefield,jobvite,https://jobs.jobvite.com/cushwake,Global,Imported from ms-job-watcher; unverified from this container
+CVS Caremark,jobvite,https://jobs.jobvite.com/cvscaremark,US,Imported from ms-job-watcher; unverified from this container
+Dana Incorporated,jobvite,https://jobs.jobvite.com/dana,US,Imported from ms-job-watcher; unverified from this container
+Danaher Corp,jobvite,https://jobs.jobvite.com/danaher,US,Imported from ms-job-watcher; unverified from this container
+Darden Restaurants,jobvite,https://jobs.jobvite.com/darden,US,Imported from ms-job-watcher; unverified from this container
+Datavant,jobvite,https://jobs.jobvite.com/datavant,US,Imported from ms-job-watcher; unverified from this container
+DCP Midstream,jobvite,https://jobs.jobvite.com/dcpmidstream,US,Imported from ms-job-watcher; unverified from this container
+Deloitte Touche,jobvite,https://jobs.jobvite.com/deloitte,Global,Imported from ms-job-watcher; unverified from this container
+Deltek,jobvite,https://jobs.jobvite.com/deltek,US,Imported from ms-job-watcher; unverified from this container
+DentaQuest,jobvite,https://jobs.jobvite.com/dentaquest,US,Imported from ms-job-watcher; unverified from this container
+Deutsche Telekom,jobvite,https://jobs.jobvite.com/telekom,Global,Imported from ms-job-watcher; unverified from this container
+Dick's,jobvite,https://jobs.jobvite.com/dicks,US,Imported from ms-job-watcher; unverified from this container
+Discovery Communications,jobvite,https://jobs.jobvite.com/discovery,US,Imported from ms-job-watcher; unverified from this container
+DISH Network,jobvite,https://jobs.jobvite.com/dish,US,Imported from ms-job-watcher; unverified from this container
+Dollar Tree,jobvite,https://jobs.jobvite.com/dollartree,US,Imported from ms-job-watcher; unverified from this container
+Dominion Resources,jobvite,https://jobs.jobvite.com/dominion,US,Imported from ms-job-watcher; unverified from this container
+Dropbox Inc,jobvite,https://jobs.jobvite.com/dropbox,US,Imported from ms-job-watcher; unverified from this container
+Duke University,jobvite,https://jobs.jobvite.com/duke,US,Imported from ms-job-watcher; unverified from this container
+Dunkin' Brands,jobvite,https://jobs.jobvite.com/dunkin,US,Imported from ms-job-watcher; unverified from this container
+DXC,jobvite,https://jobs.jobvite.com/dxc,Global,Imported from ms-job-watcher; unverified from this container
+EA,jobvite,https://jobs.jobvite.com/ea,US,Imported from ms-job-watcher; unverified from this container
+Eaton Corporation,jobvite,https://jobs.jobvite.com/eaton,US,Imported from ms-job-watcher; unverified from this container
+EBSCO Industries,jobvite,https://jobs.jobvite.com/ebsco,US,Imported from ms-job-watcher; unverified from this container
+Ecolab Inc,jobvite,https://jobs.jobvite.com/ecolab,US,Imported from ms-job-watcher; unverified from this container
+Edwards Lifesciences,jobvite,https://jobs.jobvite.com/edwards,US,Imported from ms-job-watcher; unverified from this container
+Electrolux North America,jobvite,https://jobs.jobvite.com/electrolux,US,Imported from ms-job-watcher; unverified from this container
+Eli Lilly and Company,jobvite,https://jobs.jobvite.com/lilly,US,Imported from ms-job-watcher; unverified from this container
+EMD Serono,jobvite,https://jobs.jobvite.com/emdserono,US,Imported from ms-job-watcher; unverified from this container
+Emerson Electric,jobvite,https://jobs.jobvite.com/emerson,US,Imported from ms-job-watcher; unverified from this container
+Energy Transfer,jobvite,https://jobs.jobvite.com/energytransfer,US,Imported from ms-job-watcher; unverified from this container
+Entergy Corporation,jobvite,https://jobs.jobvite.com/entergy,US,Imported from ms-job-watcher; unverified from this container
+Epic Systems,jobvite,https://jobs.jobvite.com/epic,US,Imported from ms-job-watcher; unverified from this container
+Equinix Inc,jobvite,https://jobs.jobvite.com/equinix,US,Imported from ms-job-watcher; unverified from this container
+Ericsson Inc,jobvite,https://jobs.jobvite.com/ericsson,Global,Imported from ms-job-watcher; unverified from this container
+Ernst Young,jobvite,https://jobs.jobvite.com/ey,Global,Imported from ms-job-watcher; unverified from this container
+Estee Lauder,jobvite,https://jobs.jobvite.com/esteelauder,US,Imported from ms-job-watcher; unverified from this container
+Etsy Inc,jobvite,https://jobs.jobvite.com/etsy,US,Imported from ms-job-watcher; unverified from this container
+Eventbrite,jobvite,https://jobs.jobvite.com/eventbrite,US,Imported from ms-job-watcher; unverified from this container
+Eversource,jobvite,https://jobs.jobvite.com/eversource,US,Imported from ms-job-watcher; unverified from this container
+Exelon Corporation,jobvite,https://jobs.jobvite.com/exelon,US,Imported from ms-job-watcher; unverified from this container
+Expedia Group,jobvite,https://jobs.jobvite.com/expedia,US,Imported from ms-job-watcher; unverified from this container
+Express Scripts,jobvite,https://jobs.jobvite.com/expressscripts,US,Imported from ms-job-watcher; unverified from this container
+Exxon,jobvite,https://jobs.jobvite.com/exxonmobil,US,Imported from ms-job-watcher; unverified from this container
+F5,jobvite,https://jobs.jobvite.com/f5,US,Imported from ms-job-watcher; unverified from this container
+Facebook Meta,jobvite,https://jobs.jobvite.com/facebook,US,Imported from ms-job-watcher; unverified from this container
+FactSet,jobvite,https://jobs.jobvite.com/factset,US,Imported from ms-job-watcher; unverified from this container
+Fairview Health,jobvite,https://jobs.jobvite.com/fairview,US,Imported from ms-job-watcher; unverified from this container
+Farm Credit,jobvite,https://jobs.jobvite.com/farmcredit,US,Imported from ms-job-watcher; unverified from this container
+Farmers Insurance,jobvite,https://jobs.jobvite.com/farmers,US,Imported from ms-job-watcher; unverified from this container
+Federal Home Loan,jobvite,https://jobs.jobvite.com/fhlbsf,US,Imported from ms-job-watcher; unverified from this container
+Fifth Third,jobvite,https://jobs.jobvite.com/53,US,Imported from ms-job-watcher; unverified from this container
+First Data,jobvite,https://jobs.jobvite.com/firstdata,US,Imported from ms-job-watcher; unverified from this container
+First Solar,jobvite,https://jobs.jobvite.com/firstsolar,US,Imported from ms-job-watcher; unverified from this container
+FirstEnergy Solutions,jobvite,https://jobs.jobvite.com/firstenergy,US,Imported from ms-job-watcher; unverified from this container
+FIS Global,jobvite,https://jobs.jobvite.com/fisglobal,US,Imported from ms-job-watcher; unverified from this container
+Fiserv Inc,jobvite,https://jobs.jobvite.com/fiserv,US,Imported from ms-job-watcher; unverified from this container
+Five9,jobvite,https://jobs.jobvite.com/five9,US,Imported from ms-job-watcher; unverified from this container
+FleetCor Technologies,jobvite,https://jobs.jobvite.com/fleetcor,US,Imported from ms-job-watcher; unverified from this container
+Fluor,jobvite,https://jobs.jobvite.com/fluor,US,Imported from ms-job-watcher; unverified from this container
+FMC Corporation,jobvite,https://jobs.jobvite.com/fmc,US,Imported from ms-job-watcher; unverified from this container
+FordDirect Inc,jobvite,https://jobs.jobvite.com/forddirect,US,Imported from ms-job-watcher; unverified from this container
+Fortinet,jobvite,https://jobs.jobvite.com/fortinet,US,Imported from ms-job-watcher; unverified from this container
+Fossil,jobvite,https://jobs.jobvite.com/fossil,US,Imported from ms-job-watcher; unverified from this container
+Fox Networks,jobvite,https://jobs.jobvite.com/fox,US,Imported from ms-job-watcher; unverified from this container
+Freeport-McMoRan,jobvite,https://jobs.jobvite.com/freeport,US,Imported from ms-job-watcher; unverified from this container
+MITRE,jobvite,https://jobs.jobvite.com/mitre,US,Imported from ms-job-watcher; unverified from this container
