@@ -69,11 +69,16 @@ jobs:
         run: python -m src.main --track software --mode main --no-notify
         continue-on-error: true
 
-      # One consolidated email per run, under its own subject so it never gets
-      # confused with the data digest. Note this deliberately does NOT use
-      # --notify-yes-only: scores on this track are capped by resume-fit
-      # against a data-focused resume, so "yes" is rarely reachable and the
-      # gate would silently suppress every alert.
+      # Email off at your request (2026-11-14). The schedule above is left
+      # alone on purpose: unlike digest.yml, this workflow scans and digests in
+      # the same run, so switching its cron off would stop the software track
+      # scanning as well, not just emailing. The scans and the state commit
+      # below still run; only this step is muted.
+      #
+      # To get the emails back, drop --no-notify. Note this deliberately does
+      # NOT use --notify-yes-only: scores on this track are capped by
+      # resume-fit against a data-focused resume, so "yes" is rarely reachable
+      # and the gate would silently suppress every alert.
       - name: Send software digest
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
@@ -83,7 +88,8 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python -m src.main --track software --mode digest \
-            --subject-prefix "[Job Radar SWE]"
+            --subject-prefix "[Job Radar SWE]" \
+            --no-notify
 
       - name: Commit state
         run: |

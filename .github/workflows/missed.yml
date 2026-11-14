@@ -1,13 +1,22 @@
 name: Job Radar — Missed Roles Audit
 
 on:
+  # Scheduled runs are OFF at your request (2026-11-14). This audit exists to
+  # catch matches the digests passed over, so with the digests off it has
+  # nothing to report against -- every stored match is "missed" now by
+  # definition, which would make it the loudest sender of the five rather than
+  # a safety net. It reads the database and sends mail; it scrapes nothing, so
+  # switching it off costs no coverage.
+  #
+  # Left runnable on demand below. Re-enable by restoring the cron line:
+  #
   # Every 3rd day at 15:05 UTC (11am EDT / 10am EST). Starts at :05 so its
   # 15-minute budget finishes well before priority at 15:37 — both share one
   # concurrency group, and a run left pending can be cancelled by a later
   # arrival. Note that a day-of-month step restarts each month, so the gap
   # after the 31st is short.
-  schedule:
-    - cron: "5 15 */3 * *"
+  #   schedule:
+  #     - cron: "5 15 */3 * *"
   workflow_dispatch:
     inputs:
       min_age_hours:

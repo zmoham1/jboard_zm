@@ -55,9 +55,10 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DB_PATH: state/gha-jobs.db
-        # Alerts on YES matches immediately rather than waiting for the digest.
-        # Priority companies are the ones worth hearing about first.
-        run: python -m src.main --mode priority --notify-yes-only
+        # Email off at your request (2026-11-14). The scan still runs every two
+        # hours and still stores what it finds; it just does not send mail.
+        # Restore the alerts by swapping --no-notify for --notify-yes-only.
+        run: python -m src.main --mode priority --no-notify
 
       - name: Commit state
         run: |

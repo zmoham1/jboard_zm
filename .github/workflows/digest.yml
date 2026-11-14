@@ -1,13 +1,23 @@
 name: Job Radar — Email Digest
 
 on:
-  schedule:
-    # 3x/day, 8h apart. Scheduled 20 min before the target hour and off the
-    # top of the hour: GitHub's shared scheduler is most congested at :00, and
-    # runs here were starting 1h47m to 5h35m late, so a 3pm ET digest arrived
-    # at 8:35pm. Target arrival is 03:00 / 11:00 / 19:00 UTC = 11pm / 7am / 3pm
-    # EDT (an hour earlier during EST; cron does not follow daylight saving).
-    - cron: "40 2,10,18 * * *"
+  # Scheduled runs are OFF at your request (2026-11-14). This workflow only
+  # reads the database and sends mail -- it scrapes nothing -- so switching the
+  # cron off costs no coverage. Every match the boards, priority and main scans
+  # find is still stored and still visible on the dashboard; it simply stays
+  # pending instead of being emailed, and ages out after 14 days like any other
+  # row.
+  #
+  # Left runnable on demand below, so you can still pull a digest by hand at
+  # any time. Re-enable by restoring the cron line:
+  #
+  # 3x/day, 8h apart. Scheduled 20 min before the target hour and off the
+  # top of the hour: GitHub's shared scheduler is most congested at :00, and
+  # runs here were starting 1h47m to 5h35m late, so a 3pm ET digest arrived
+  # at 8:35pm. Target arrival is 03:00 / 11:00 / 19:00 UTC = 11pm / 7am / 3pm
+  # EDT (an hour earlier during EST; cron does not follow daylight saving).
+  #   schedule:
+  #     - cron: "40 2,10,18 * * *"
   workflow_dispatch:
 
 permissions:
